@@ -1,0 +1,26 @@
+* text=auto
+
+# Unity YAML-based assets should stay normalized
+*.unity text eol=lf
+*.prefab text eol=lf
+*.mat text eol=lf
+*.asset text eol=lf
+*.meta text eol=lf
+*.anim text eol=lf
+*.controller text eol=lf
+*.asmdef text eol=lf
+
+# Windows-native scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary documents and media
+*.pdf binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary
