@@ -1,6 +1,6 @@
 ---
 document_type: gdd
-project_name: Proyecto-Movimiento
+project_name: Slot Car Racing AR
 title: Slot Car Racing AR
 status: draft-v1
 language: es

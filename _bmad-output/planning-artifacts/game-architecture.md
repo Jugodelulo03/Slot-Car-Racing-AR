@@ -1,6 +1,6 @@
 ---
 title: 'Game Architecture'
-project: 'Proyecto-Movimiento'
+project: 'Slot Car Racing AR'
 date: '2026-04-16'
 author: 'Jpinzon'
 version: '1.0'
@@ -10,10 +10,10 @@ engine: 'Unity 6.3 LTS'
 platform: 'Android'
 
 # Source Documents
-gdd: 'c:\Users\jpinzon\Proyecto-Movimiento\_bmad-output\planning-artifacts\gdd-slot-car-racing-ar.md'
+gdd: 'l:\ARGame\Slot-Car-Racing-AR\_bmad-output\planning-artifacts\gdd-slot-car-racing-ar.md'
 epics: null
 brief: null
-ux: 'c:\Users\jpinzon\Proyecto-Movimiento\_bmad-output\planning-artifacts\ux-design-specification.md'
+ux: 'l:\ARGame\Slot-Car-Racing-AR\_bmad-output\planning-artifacts\ux-design-specification.md'
 ---
 
 # Game Architecture
@@ -836,7 +836,7 @@ The following are forbidden:
 **Definition:**  
 El proyecto usa una estructura hibrida con dos reglas simultaneas:
 
-1. En `Assets/ProyectoMovimiento`, los recursos se organizan por tipo siguiendo convenciones de Unity: `Art`, `Audio`, `Data`, `Prefabs`, `Scenes`, `Scripts`, `Tests`.
+1. En `Assets/SlotCarRacingAR`, los recursos se organizan por tipo siguiendo convenciones de Unity: `Art`, `Audio`, `Data`, `Prefabs`, `Scenes`, `Scripts`, `Tests`.
 2. Dentro de runtime code, la organizacion se hace por responsabilidad y dominio real: `Core`, `Runtime/App`, `Runtime/Infrastructure`, `Runtime/Features`, `Runtime/UI`, `Runtime/Debug`.
 
 **Rationale:**  
@@ -845,9 +845,9 @@ Esta mezcla mantiene orden natural para Unity sin convertir el proyecto en un ar
 ### Directory Structure
 
 ```text
-Proyecto-Movimiento/
+Slot-Car-Racing-AR/
 ├── Assets/
-│   └── ProyectoMovimiento/
+│   └── SlotCarRacingAR/
 │       ├── Art/
 │       │   ├── Materials/
 │       │   ├── Models/
@@ -882,7 +882,7 @@ Proyecto-Movimiento/
 │       │       └── PerformanceSandbox.unity
 │       ├── Scripts/
 │       │   ├── Core/
-│       │   │   ├── ProyectoMovimiento.Core.asmdef
+│       │   │   ├── SlotCarRacingAR.Core.asmdef
 │       │   │   ├── Contracts/
 │       │   │   ├── Events/
 │       │   │   ├── Logging/
@@ -890,7 +890,7 @@ Proyecto-Movimiento/
 │       │   │   ├── State/
 │       │   │   └── Timing/
 │       │   ├── Runtime/
-│       │   │   ├── ProyectoMovimiento.Runtime.asmdef
+│       │   │   ├── SlotCarRacingAR.Runtime.asmdef
 │       │   │   ├── App/
 │       │   │   │   ├── Bootstrap/
 │       │   │   │   └── Composition/
@@ -913,7 +913,7 @@ Proyecto-Movimiento/
 │       │   │   └── Debug/
 │       │   │       └── Runtime/
 │       │   └── Editor/
-│       │       ├── ProyectoMovimiento.Editor.asmdef
+│       │       ├── SlotCarRacingAR.Editor.asmdef
 │       │       ├── Build/
 │       │       ├── Tools/
 │       │       └── Validation/
@@ -921,11 +921,11 @@ Proyecto-Movimiento/
 │           ├── EditMode/
 │           │   ├── Fixtures/
 │           │   ├── TestDoubles/
-│           │   └── ProyectoMovimiento.Tests.EditMode.asmdef
+│           │   └── SlotCarRacingAR.Tests.EditMode.asmdef
 │           └── PlayMode/
 │               ├── Harnesses/
 │               ├── Smoke/
-│               └── ProyectoMovimiento.Tests.PlayMode.asmdef
+│               └── SlotCarRacingAR.Tests.PlayMode.asmdef
 ├── Packages/
 │   ├── manifest.json
 │   └── packages-lock.json
@@ -938,11 +938,11 @@ Proyecto-Movimiento/
 ### Assembly Definition Policy
 
 **Allowed asmdefs for MVP:**
-- `ProyectoMovimiento.Core`
-- `ProyectoMovimiento.Runtime`
-- `ProyectoMovimiento.Editor`
-- `ProyectoMovimiento.Tests.EditMode`
-- `ProyectoMovimiento.Tests.PlayMode`
+- `SlotCarRacingAR.Core`
+- `SlotCarRacingAR.Runtime`
+- `SlotCarRacingAR.Editor`
+- `SlotCarRacingAR.Tests.EditMode`
+- `SlotCarRacingAR.Tests.PlayMode`
 
 **Rules:**
 - No se crea una asmdef nueva por feature en esta etapa.
@@ -956,28 +956,28 @@ Proyecto-Movimiento/
 
 | System | Location | Responsibility |
 | ------ | -------- | -------------- |
-| App bootstrap | `Assets/ProyectoMovimiento/Scripts/Runtime/App/Bootstrap/` | Entrada de aplicacion, composition root y transicion al flujo inicial |
-| Scene composition | `Assets/ProyectoMovimiento/Scripts/Runtime/App/Composition/` | Wiring por escena, installers y dependencias visibles |
-| Device validation | `Assets/ProyectoMovimiento/Scripts/Runtime/Infrastructure/Platform/` | Compatibilidad ARCore, permisos y checks de dispositivo |
-| AR runtime integration | `Assets/ProyectoMovimiento/Scripts/Runtime/Infrastructure/AR/` | Adaptadores de AR Foundation / ARCore y estado tecnico AR |
-| Networking runtime integration | `Assets/ProyectoMovimiento/Scripts/Runtime/Infrastructure/Networking/` | NGO, Unity Transport, host/client lifecycle y adaptadores tecnicos |
-| Persistence | `Assets/ProyectoMovimiento/Scripts/Runtime/Infrastructure/Persistence/` | PlayerPrefs, JSON local y snapshots runtime |
-| Telemetry and profiling | `Assets/ProyectoMovimiento/Scripts/Runtime/Infrastructure/Telemetry/` | FPS, RTT, jitter, drift, recovery metrics |
-| Shared contracts and primitives | `Assets/ProyectoMovimiento/Scripts/Core/` | Result types, state contracts, events, logging contracts y tipos compartidos |
-| Calibration flow | `Assets/ProyectoMovimiento/Scripts/Runtime/Features/Calibration/` | Setup AR, validacion de marcadores, delimitacion de superficie y TrackFreeze |
-| Session flow | `Assets/ProyectoMovimiento/Scripts/Runtime/Features/Session/` | Lobby, create/join, ready state y countdown previo a carrera |
-| Race flow | `Assets/ProyectoMovimiento/Scripts/Runtime/Features/Race/` | Simulacion, inputs validos, checkpoints, vueltas, invalidacion y flow activo |
-| Results flow | `Assets/ProyectoMovimiento/Scripts/Runtime/Features/Results/` | Resultados, rematch y salida controlada |
-| Screens and HUD | `Assets/ProyectoMovimiento/Scripts/Runtime/UI/` | Presentacion visual y binding de estado sin logica de dominio |
-| Runtime debug | `Assets/ProyectoMovimiento/Scripts/Runtime/Debug/Runtime/` | Overlays, paneles y comandos solo para desarrollo |
-| Editor-only tooling | `Assets/ProyectoMovimiento/Scripts/Editor/` | Validadores, utilidades de build y herramientas de editor |
-| Config assets | `Assets/ProyectoMovimiento/Data/Config/` | ScriptableObjects de tuning, platform tiers y flags de debug |
-| Track definitions | `Assets/ProyectoMovimiento/Data/Tracks/` | Definiciones de pista y escalas validadas |
-| Marker profiles | `Assets/ProyectoMovimiento/Data/MarkerProfiles/` | Perfiles y tolerancias de marcadores |
-| Productive scenes | `Assets/ProyectoMovimiento/Scenes/` | Boot, Lobby y Race |
-| Technical sandboxes | `Assets/ProyectoMovimiento/Scenes/Sandboxes/` | Aislamiento tecnico para calibracion, red y rendimiento |
-| EditMode tests | `Assets/ProyectoMovimiento/Tests/EditMode/` | Logica pura, contratos, configuracion y utilidades |
-| PlayMode tests | `Assets/ProyectoMovimiento/Tests/PlayMode/` | Smoke tests, integracion de escenas, harnesses AR/red |
+| App bootstrap | `Assets/SlotCarRacingAR/Scripts/Runtime/App/Bootstrap/` | Entrada de aplicacion, composition root y transicion al flujo inicial |
+| Scene composition | `Assets/SlotCarRacingAR/Scripts/Runtime/App/Composition/` | Wiring por escena, installers y dependencias visibles |
+| Device validation | `Assets/SlotCarRacingAR/Scripts/Runtime/Infrastructure/Platform/` | Compatibilidad ARCore, permisos y checks de dispositivo |
+| AR runtime integration | `Assets/SlotCarRacingAR/Scripts/Runtime/Infrastructure/AR/` | Adaptadores de AR Foundation / ARCore y estado tecnico AR |
+| Networking runtime integration | `Assets/SlotCarRacingAR/Scripts/Runtime/Infrastructure/Networking/` | NGO, Unity Transport, host/client lifecycle y adaptadores tecnicos |
+| Persistence | `Assets/SlotCarRacingAR/Scripts/Runtime/Infrastructure/Persistence/` | PlayerPrefs, JSON local y snapshots runtime |
+| Telemetry and profiling | `Assets/SlotCarRacingAR/Scripts/Runtime/Infrastructure/Telemetry/` | FPS, RTT, jitter, drift, recovery metrics |
+| Shared contracts and primitives | `Assets/SlotCarRacingAR/Scripts/Core/` | Result types, state contracts, events, logging contracts y tipos compartidos |
+| Calibration flow | `Assets/SlotCarRacingAR/Scripts/Runtime/Features/Calibration/` | Setup AR, validacion de marcadores, delimitacion de superficie y TrackFreeze |
+| Session flow | `Assets/SlotCarRacingAR/Scripts/Runtime/Features/Session/` | Lobby, create/join, ready state y countdown previo a carrera |
+| Race flow | `Assets/SlotCarRacingAR/Scripts/Runtime/Features/Race/` | Simulacion, inputs validos, checkpoints, vueltas, invalidacion y flow activo |
+| Results flow | `Assets/SlotCarRacingAR/Scripts/Runtime/Features/Results/` | Resultados, rematch y salida controlada |
+| Screens and HUD | `Assets/SlotCarRacingAR/Scripts/Runtime/UI/` | Presentacion visual y binding de estado sin logica de dominio |
+| Runtime debug | `Assets/SlotCarRacingAR/Scripts/Runtime/Debug/Runtime/` | Overlays, paneles y comandos solo para desarrollo |
+| Editor-only tooling | `Assets/SlotCarRacingAR/Scripts/Editor/` | Validadores, utilidades de build y herramientas de editor |
+| Config assets | `Assets/SlotCarRacingAR/Data/Config/` | ScriptableObjects de tuning, platform tiers y flags de debug |
+| Track definitions | `Assets/SlotCarRacingAR/Data/Tracks/` | Definiciones de pista y escalas validadas |
+| Marker profiles | `Assets/SlotCarRacingAR/Data/MarkerProfiles/` | Perfiles y tolerancias de marcadores |
+| Productive scenes | `Assets/SlotCarRacingAR/Scenes/` | Boot, Lobby y Race |
+| Technical sandboxes | `Assets/SlotCarRacingAR/Scenes/Sandboxes/` | Aislamiento tecnico para calibracion, red y rendimiento |
+| EditMode tests | `Assets/SlotCarRacingAR/Tests/EditMode/` | Logica pura, contratos, configuracion y utilidades |
+| PlayMode tests | `Assets/SlotCarRacingAR/Tests/PlayMode/` | Smoke tests, integracion de escenas, harnesses AR/red |
 
 ### Classification Examples
 
@@ -1015,7 +1015,7 @@ Proyecto-Movimiento/
 
 | Element | Convention | Example |
 | ------- | ---------- | ------- |
-| Namespace | Match folder intent | `ProyectoMovimiento.Runtime.Features.Race` |
+| Namespace | Match folder intent | `SlotCarRacingAR.Runtime.Features.Race` |
 | Class | `PascalCase` | `RaceCoordinator` |
 | Interface | `IPascalCase` | `IEventBus` |
 | Method | `PascalCase` | `TryLockCalibration` |
@@ -1577,7 +1577,7 @@ public sealed class SessionStateMachine
 **Example:**
 
 ```csharp
-[CreateAssetMenu(menuName = "ProyectoMovimiento/Race Config")]
+[CreateAssetMenu(menuName = "SlotCarRacingAR/Race Config")]
 public sealed class RaceConfig : ScriptableObject
 {
 	[SerializeField] private float _defaultLapTimeLimit = 60f;
@@ -1690,6 +1690,6 @@ The following MCP server was selected during architecture as optional, non-block
 
 1. Create the clean Unity project and switch target platform to Android.
 2. Add and pin the required Unity packages defined by the architecture.
-3. Create the root folder structure under `Assets/ProyectoMovimiento` and the initial asmdefs.
+3. Create the root folder structure under `Assets/SlotCarRacingAR` and the initial asmdefs.
 4. Configure MCP Unity only if it reduces real editor friction after the first vertical slice.
 5. Implement the minimum vertical slice: marker detection, stable preview, TrackFreeze, one car and one acceleration button.

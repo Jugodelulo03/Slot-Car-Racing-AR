@@ -1,0 +1,74 @@
+# generated: 2026-05-01
+# last_updated: 2026-05-01
+# project: Slot Car Racing AR
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: l:\ARGame\Slot-Car-Racing-AR\_bmad-output\implementation-artifacts
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-05-01
+last_updated: 2026-05-01
+project: Slot Car Racing AR
+project_key: NOKEY
+tracking_system: file-system
+story_location: l:\ARGame\Slot-Car-Racing-AR\_bmad-output\implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-set-up-the-initial-unity-project-from-the-approved-starter: ready-for-dev
+  1-2-choose-how-to-start-a-match: backlog
+  1-3-host-creates-a-local-session: backlog
+  1-4-guest-joins-an-existing-local-session: backlog
+  1-5-enter-the-shared-setup-lobby: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-detect-the-shared-marker-and-preview-the-track: backlog
+  2-2-validate-track-stability-before-ready: backlog
+  2-3-confirm-both-players-are-ready-on-the-same-track: backlog
+  2-4-freeze-the-shared-track-and-start-the-countdown: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-start-a-quick-race-on-the-frozen-track: backlog
+  3-2-control-my-car-with-hold-to-accelerate-input: backlog
+  3-3-resolve-race-progress-authoritatively: backlog
+  3-4-penalize-unsafe-curve-speed: backlog
+  3-5-read-the-race-hud-at-a-glance: backlog
+  3-6-keep-the-race-smooth-and-observable-on-device: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-recover-from-tracking-problems-during-setup-or-race: backlog
+  4-2-recover-from-network-loss-or-host-failure: backlog
+  4-3-see-a-clear-race-result-and-decide-what-to-do-next: backlog
+  4-4-launch-a-fast-rematch-when-the-track-is-still-valid: backlog
+  epic-4-retrospective: optional

@@ -1,5 +1,5 @@
 ---
-project_name: 'Proyecto-Movimiento'
+project_name: 'Slot Car Racing AR'
 user_name: 'Jpinzon'
 date: '2026-04-16'
 sections_completed: ['technology_stack', 'engine_rules', 'performance_rules', 'organization_rules', 'testing_rules', 'platform_rules', 'anti_patterns']
@@ -26,7 +26,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Audio stack: Unity Audio + Mixer
 - Persistence: local minimal config using ScriptableObjects + constants + PlayerPrefs/JSON where needed
 - Architecture posture: host-authoritative local multiplayer with TrackFreeze, Race Space Snapshot and Spatial Trust/Recovery
-- Project organization: hybrid structure under Assets/ProyectoMovimiento with minimal asmdefs
+- Project organization: hybrid structure under Assets/SlotCarRacingAR with minimal asmdefs
 
 ## Critical Implementation Rules
 
@@ -55,7 +55,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Every subscription, coroutine, async operation, delayed action, and callback chain must have a clear owner plus explicit cleanup on scene exit, `OnDisable`, or `OnDestroy`.
 - Do not add `Update`, `LateUpdate`, or `FixedUpdate` unless the component owns genuinely time-based behavior. Hot-path loops must remain allocation-free and must not split shared truth across multiple update mechanisms.
 - Use `OnValidate` only for editor-time validation and authoring feedback. Never rely on `OnValidate` for runtime state creation or hidden auto-wiring.
-- During MVP, only these asmdefs are allowed: `ProyectoMovimiento.Core`, `ProyectoMovimiento.Runtime`, `ProyectoMovimiento.Editor`, `ProyectoMovimiento.Tests.EditMode`, and `ProyectoMovimiento.Tests.PlayMode`. Creating a new asmdef or changing the reference graph requires explicit architecture approval.
+- During MVP, only these asmdefs are allowed: `SlotCarRacingAR.Core`, `SlotCarRacingAR.Runtime`, `SlotCarRacingAR.Editor`, `SlotCarRacingAR.Tests.EditMode`, and `SlotCarRacingAR.Tests.PlayMode`. Creating a new asmdef or changing the reference graph requires explicit architecture approval.
 - Allowed dependency direction is strict: `Core` cannot reference `Runtime` or `Editor`; `Runtime` may depend on `Core`; `Editor` may depend on `Core` and `Runtime`; tests may depend on `Core` and `Runtime`, never the reverse. `UnityEditor` must never appear outside `Editor`, not even behind conditional compilation.
 - If an implementation appears to require an exception to these rules, the agent must stop and request explicit approval rather than assume the exception is allowed.
 
@@ -76,7 +76,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Code Organization Rules
 
-- All runtime code lives under `Assets/ProyectoMovimiento`, with asset folders organized by Unity resource type and script folders organized by responsibility.
+- All runtime code lives under `Assets/SlotCarRacingAR`, with asset folders organized by Unity resource type and script folders organized by responsibility.
 - Use only the approved hybrid layout: `Scripts/Core`, `Scripts/Runtime/App`, `Scripts/Runtime/Infrastructure`, `Scripts/Runtime/Features`, `Scripts/Runtime/UI`, `Scripts/Runtime/Debug`, `Scripts/Editor`, and `Tests`.
 - `Core` contains shared contracts, primitives, result types, domain state rules, and other cross-feature code that is truly engine-agnostic.
 - `Runtime/App` owns bootstrapping, composition roots, and visible scene wiring.
@@ -93,7 +93,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Correct placement matters: `LapTimeRules` belongs in `Scripts/Core`, `ARSessionAdapter` in `Scripts/Runtime/Infrastructure/AR`, `RaceCoordinator` in `Scripts/Runtime/Features/Race`, and `CountdownPresenter` in `Scripts/Runtime/UI/Presenters`.
 - Invalid placement is an architecture violation, not a style nit. Examples: a presenter in `Core`, an AR repository in `UI`, a `MonoBehaviour` spawner in `Core`, or production logic inside a sandbox.
 - Naming stays conventional: classes, methods, scenes, prefabs, and ScriptableObjects use `PascalCase`; interfaces use `IPascalCase`; private fields use `_camelCase`; locals and parameters use `camelCase`.
-- Namespaces follow folder intent, for example `ProyectoMovimiento.Runtime.Features.Race`.
+- Namespaces follow folder intent, for example `SlotCarRacingAR.Runtime.Features.Race`.
 - ScriptableObjects use semantic suffixes such as `RaceConfig`, `MarkerProfile`, and `DeviceTierConfig`.
 - Events use completed-state or domain-action naming such as `CalibrationLocked`, `TrackFreezeCompleted`, and `RaceInvalidated`.
 

@@ -15,11 +15,11 @@ stepsCompleted:
   - 13
   - 14
 inputDocuments:
-  - c:\Users\jpinzon\Proyecto-Movimiento\_bmad-output\planning-artifacts\gdd-slot-car-racing-ar.md
-  - c:\Users\jpinzon\Proyecto-Movimiento\docs\FORMATO DOCUMENTO PROYECTO MOV. E INTERACCIÓN (1).docx
-  - c:\Users\jpinzon\Proyecto-Movimiento\docs\EXPERIENCIA USUARIO I (1).pdf
+  - l:\ARGame\Slot-Car-Racing-AR\_bmad-output\planning-artifacts\gdd-slot-car-racing-ar.md
+  - l:\ARGame\Slot-Car-Racing-AR\docs\FORMATO DOCUMENTO PROYECTO MOV. E INTERACCIÓN (1).docx
+  - l:\ARGame\Slot-Car-Racing-AR\docs\EXPERIENCIA USUARIO I (1).pdf
 workflowType: ux-design
-project_name: Proyecto-Movimiento
+project_name: Slot Car Racing AR
 user_name: Jpinzon
 date: 2026-04-14
 language: es
@@ -27,7 +27,7 @@ status: completed
 lastStep: 14
 ---
 
-# UX Design Specification - Proyecto-Movimiento
+# UX Design Specification - Slot Car Racing AR
 
 **Author:** Jpinzon
 **Date:** 2026-04-14
