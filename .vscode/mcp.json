@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "mcp-unity": {
+      "command": "node",
+      "args": [
+        "L:/ARGame/Slot-Car-Racing-AR/My project/Library/PackageCache/com.gamelovers.mcp-unity@d176a9d737cc/Server~/build/index.js"
+      ]
+    }
+  }
+}

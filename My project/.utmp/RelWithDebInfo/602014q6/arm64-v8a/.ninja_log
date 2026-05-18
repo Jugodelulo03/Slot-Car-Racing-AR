@@ -1,0 +1,12 @@
+# ninja log v5
+39	487	8001425526505093	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	c87a68311a87a040
+490	1077	8001425530417376	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/602014q6/obj/arm64-v8a/libswappywrapper.so	c94003ea30156db2
+15	2311	8001425544779254	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	6e6e805783aa0655
+20	2411	8001425545781755	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	e3c9ae3240959ff1
+7	2450	8001425546197560	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	b552eba295d2550b
+29	2552	8001425547271253	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	65cfcbbbe37ee5dc
+11	2640	8001425548136621	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	1129a76aa56110fc
+34	2660	8001425548319099	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	17fc80f5f67956d5
+25	2847	8001425550208842	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	29e7159eeacab09a
+0	3122	8001425552903863	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	322dd645dcc5f21e
+3123	3242	8001425554173392	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/602014q6/obj/arm64-v8a/libgame.so	48c8ff5d0951f0d2

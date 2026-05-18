@@ -1,0 +1,4 @@
+﻿<Solution>
+  <Project Path="SlotCarRacingAR.Runtime.csproj" />
+  <Project Path="SlotCarRacingAR.Editor.csproj" />
+</Solution>

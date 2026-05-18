@@ -1,0 +1,22 @@
+{
+    "name": "SlotCarRacingAR.Editor",
+    "rootNamespace": "SlotCarRacingAR.Editor",
+    "references": [
+        "SlotCarRacingAR.Core",
+        "SlotCarRacingAR.Runtime",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems",
+        "Unity.XR.ARSubsystems.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

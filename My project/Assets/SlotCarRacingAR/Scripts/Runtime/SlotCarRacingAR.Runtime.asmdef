@@ -1,0 +1,20 @@
+{
+    "name": "SlotCarRacingAR.Runtime",
+    "rootNamespace": "SlotCarRacingAR.Runtime",
+    "references": [
+        "SlotCarRacingAR.Core",
+        "Unity.InputSystem",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems",
+        "Unity.XR.CoreUtils"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
