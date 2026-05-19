@@ -29,7 +29,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             }
 
             PlayerCount.OnValueChanged += HandlePlayerCountValueChanged;
-            Debug.Log("[SharedLobbyState] Spawned. PlayerCount=" + PlayerCount.Value + " IsServer=" + IsServer);
+            UnityEngine.Debug.Log("[SharedLobbyState] Spawned. PlayerCount=" + PlayerCount.Value + " IsServer=" + IsServer);
         }
 
         public override void OnNetworkDespawn()
@@ -46,13 +46,11 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         private void HandleClientConnected(ulong clientId)
         {
             PlayerCount.Value = (byte)NetworkManager.ConnectedClientsIds.Count;
-            Debug.Log("[SharedLobbyState] Client connected. PlayerCount=" + PlayerCount.Value);
+            UnityEngine.Debug.Log("[SharedLobbyState] Client connected. PlayerCount=" + PlayerCount.Value);
         }
 
         private void HandleClientDisconnected(ulong clientId)
         {
-            // ConnectedClientsIds still includes the disconnecting client at this point in some NGO versions
-            // Schedule a frame-delayed update to get accurate count
             StartCoroutine(UpdatePlayerCountNextFrame());
         }
 
@@ -62,13 +60,13 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             if (IsServer && NetworkManager != null)
             {
                 PlayerCount.Value = (byte)NetworkManager.ConnectedClientsIds.Count;
-                Debug.Log("[SharedLobbyState] Client disconnected. PlayerCount=" + PlayerCount.Value);
+                UnityEngine.Debug.Log("[SharedLobbyState] Client disconnected. PlayerCount=" + PlayerCount.Value);
             }
         }
 
         private void HandlePlayerCountValueChanged(byte oldValue, byte newValue)
         {
-            Debug.Log("[SharedLobbyState] PlayerCount changed: " + oldValue + " → " + newValue);
+            UnityEngine.Debug.Log("[SharedLobbyState] PlayerCount changed: " + oldValue + " → " + newValue);
             OnPlayerCountChanged?.Invoke(oldValue, newValue);
         }
     }

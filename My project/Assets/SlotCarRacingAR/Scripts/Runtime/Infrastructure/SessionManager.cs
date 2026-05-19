@@ -52,7 +52,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         {
             if (_state != SessionState.Idle && _state != SessionState.Failed)
             {
-                Debug.LogWarning("[SessionManager] Cannot start host — state is " + _state);
+                UnityEngine.Debug.LogWarning("[SessionManager] Cannot start host — state is " + _state);
                 return;
             }
 
@@ -93,14 +93,14 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             _role = PlayerRole.Host;
             _playerId = 1;
             SetState(SessionState.WaitingForPlayer);
-            Debug.Log("[SessionManager] Host started. Waiting for player on " + GetLocalIPAddress() + ":7777");
+            UnityEngine.Debug.Log("[SessionManager] Host started. Waiting for player on " + GetLocalIPAddress() + ":7777");
         }
 
         public void StartGuestSession(string hostIp)
         {
             if (_state != SessionState.Idle && _state != SessionState.Failed)
             {
-                Debug.LogWarning("[SessionManager] Cannot join — state is " + _state);
+                UnityEngine.Debug.LogWarning("[SessionManager] Cannot join — state is " + _state);
                 return;
             }
 
@@ -145,7 +145,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             _role = PlayerRole.Guest;
             _playerId = 2;
             _joinTimeoutCoroutine = StartCoroutine(JoinTimeoutRoutine());
-            Debug.Log("[SessionManager] Guest connecting to " + hostIp + ":7777...");
+            UnityEngine.Debug.Log("[SessionManager] Guest connecting to " + hostIp + ":7777...");
         }
 
         public void RetryGuestSession()
@@ -181,7 +181,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             if (clientId != nm.LocalClientId) return;
 
             CancelJoinTimeout();
-            Debug.Log("[SessionManager] Guest connected to host!");
+            UnityEngine.Debug.Log("[SessionManager] Guest connected to host!");
             PlayerPrefs.SetString("LastHostIP", _lastHostIp);
             PlayerPrefs.Save();
             SetState(SessionState.Connected);
@@ -269,7 +269,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             }
             catch (Exception e)
             {
-                Debug.LogWarning("[SessionManager] Could not resolve local IP: " + e.Message);
+                UnityEngine.Debug.LogWarning("[SessionManager] Could not resolve local IP: " + e.Message);
             }
             return "127.0.0.1";
         }
@@ -282,7 +282,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             if (clientId == nm.LocalClientId) return;
 
             // A remote client connected — we have player 2
-            Debug.Log("[SessionManager] Client connected: " + clientId);
+            UnityEngine.Debug.Log("[SessionManager] Client connected: " + clientId);
             SetState(SessionState.Connected);
         }
 
@@ -295,7 +295,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             // If we were connected and remote leaves, go back to waiting
             if (_state == SessionState.Connected)
             {
-                Debug.Log("[SessionManager] Client disconnected: " + clientId + " — back to waiting.");
+                UnityEngine.Debug.Log("[SessionManager] Client disconnected: " + clientId + " — back to waiting.");
                 SetState(SessionState.WaitingForPlayer);
             }
         }
@@ -303,7 +303,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         private void Fail(string reason)
         {
             _failureReason = reason;
-            Debug.LogError("[SessionManager] " + reason);
+            UnityEngine.Debug.LogError("[SessionManager] " + reason);
             SetState(SessionState.Failed);
         }
 
