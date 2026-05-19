@@ -73,11 +73,7 @@ namespace SlotCarRacingAR.Runtime.Debug
                 ? Quaternion.LookRotation(Vector3.forward, up)
                 : Quaternion.LookRotation(forward.normalized, up);
 
-            EnsureProbeVisual();
-
-            Vector3 liftedPosition = targetPose.position + (up * 0.02f);
-            _probeRoot.transform.SetPositionAndRotation(liftedPosition, targetRotation);
-            _probeRoot.SetActive(true);
+            // Probe visual disabled — data is still available via properties
 
             _hasPlacement = true;
             _lastHitPose = targetPose;

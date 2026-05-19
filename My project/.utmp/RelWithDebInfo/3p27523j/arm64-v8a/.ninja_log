@@ -1,23 +1,23 @@
 # ninja log v5
-6	4587	8001452287081792	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	ce434449ad21a49f
-39	377	8001452245249384	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	eed544f6c2eec908
-20	3071	8001452271947507	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	cf2c29c26f4e0874
-380	751	8001452247655557	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3p27523j/obj/arm64-v8a/libswappywrapper.so	92d7b8bb935ce3e0
-35	4457	8001452285944732	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	e68b9be212fd8b29
-1	3186	8001452272785172	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	fa6ceaac627e6721
-11	3640	8001452277634490	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	8dcf9f8fc18672cf
-30	3363	8001452274929807	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	39122218b7ce9950
-15	3390	8001452274849645	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	7e22ca97f8da04f6
-24	4526	8001452286574921	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	d5b319771f782a1e
-4588	4761	8001452288860113	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3p27523j/obj/arm64-v8a/libgame.so	926090e74f334a79
+13	2148	8001546814255317	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	ce434449ad21a49f
 40	282	8001546795675664	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	eed544f6c2eec908
 283	507	8001546797501429	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3p27523j/obj/arm64-v8a/libswappywrapper.so	92d7b8bb935ce3e0
 23	1631	8001546809096043	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	cf2c29c26f4e0874
-9	1633	8001546809096043	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	7e22ca97f8da04f6
 19	1682	8001546809596345	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	fa6ceaac627e6721
+36	1878	8001546811614890	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	e68b9be212fd8b29
 31	1691	8001546809686824	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	39122218b7ce9950
 15	1760	8001546810375798	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	8dcf9f8fc18672cf
-36	1878	8001546811614890	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	e68b9be212fd8b29
+9	1633	8001546809096043	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	7e22ca97f8da04f6
 27	2036	8001546813163560	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	d5b319771f782a1e
-13	2148	8001546814255317	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	ce434449ad21a49f
 2148	2259	8001546815393285	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3p27523j/obj/arm64-v8a/libgame.so	926090e74f334a79
+56	463	8008697952107874	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	eed544f6c2eec908
+465	868	8008697955952503	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3p27523j/obj/arm64-v8a/libswappywrapper.so	92d7b8bb935ce3e0
+44	2525	8008697972720345	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	cf2c29c26f4e0874
+37	2573	8008697973496414	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	39122218b7ce9950
+10	2647	8008697974192551	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	7e22ca97f8da04f6
+25	2718	8008697974871668	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	8dcf9f8fc18672cf
+21	2729	8008697974913344	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	fa6ceaac627e6721
+51	2879	8008697976545641	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	e68b9be212fd8b29
+30	3152	8008697979169800	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	d5b319771f782a1e
+16	3302	8008697980695551	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	ce434449ad21a49f
+3302	3438	8008697982136759	L:/ARGame/Slot-Car-Racing-AR/My project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3p27523j/obj/arm64-v8a/libgame.so	926090e74f334a79

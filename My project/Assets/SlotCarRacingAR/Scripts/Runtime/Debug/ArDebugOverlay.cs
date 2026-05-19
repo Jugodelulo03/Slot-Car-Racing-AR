@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using SlotCarRacingAR.Runtime.Features;
 using SlotCarRacingAR.Runtime.Infrastructure;
 using UnityEngine;
 using UnityEngine.UI;
@@ -247,8 +248,28 @@ namespace SlotCarRacingAR.Runtime.Debug
 
             _buffer.AppendLine();
             _buffer.Append("tracking losses: ").Append(_telemetryHooks != null ? _telemetryHooks.TrackingLossCount.ToString() : "n/a").AppendLine();
+
+            // --- CAR & CURVE DIAGNOSTICS ---
+            CarPlaceholder car = _markerDetectionEntryPoint != null ? _markerDetectionEntryPoint.Car : null;
+            _buffer.Append("--- CAR ---").AppendLine();
+            if (car != null)
+            {
+                _buffer.Append("speed: ").Append(car.Speed.ToString("F3")).Append(" / max ").Append(car.MaxSpeed.ToString("F3")).Append(" m/s").AppendLine();
+                _buffer.Append("safe: ").Append(car.CurrentSafeSpeed.ToString("F3")).Append(" m/s | angle: ").Append(car.CurrentCurvatureAngle.ToString("F1")).Append("°").AppendLine();
+                _buffer.Append("difficulty: ").Append(car.CurrentDifficulty.ToString()).Append(" | state: ").Append(car.StateLabel).AppendLine();
+                _buffer.Append("progress: ").Append(car.TrackProgress.ToString("F3")).Append(" | lap: ").Append(car.LapCount).AppendLine();
+                _buffer.Append("curves: ").Append(car.TrackCurvePercentage.ToString("F1")).Append("% | length: ").Append(car.TrackTotalLength.ToString("F2")).AppendLine();
+                if (_markerDetectionEntryPoint != null)
+                    _buffer.Append("detection: ").Append(_markerDetectionEntryPoint.CurveDetectionMode).AppendLine();
+            }
+            else
+            {
+                _buffer.Append("car: not bound").AppendLine();
+            }
+            _buffer.Append("-----------").AppendLine();
+
             _buffer.Append("--- 3D MODEL ---").AppendLine();
-            _buffer.Append(SlotCarRacingAR.Runtime.Features.TrackModelLoader.DiagnosticLog).AppendLine();
+            _buffer.Append(TrackModelLoader.DiagnosticLog).AppendLine();
             _buffer.Append("----------------").AppendLine();
             _buffer.Append("graphics api: ").Append(SystemInfo.graphicsDeviceType).AppendLine();
             _buffer.Append("screen: ").Append(Screen.width).Append('x').Append(Screen.height).Append(" | orientation: ").Append(Screen.orientation);

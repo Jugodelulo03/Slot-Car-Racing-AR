@@ -37,6 +37,10 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         [Tooltip("Drag the TrackGroup from the scene. Contains the 3D model + path waypoints. Overrides the fields above.")]
         [SerializeField] private TrackSceneSetup _trackSceneSetup;
 
+        [Header("Debug Visualization")]
+        [Tooltip("Optional: visualizes track points colored by difficulty at runtime.")]
+        [SerializeField] private TrackDebugVisualizer _trackDebugVisualizer;
+
         [Header("Height Correction")]
         [Tooltip("Vertical offset in meters above the anchor plane.")]
         [SerializeField] [Range(-0.05f, 0.10f)] private float _heightOffsetMeters = 0.015f;
@@ -95,6 +99,10 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         public bool HasMarkerRectangle => _isAnchored;
         public float RectangleWidthMeters => TrackWidthMeters;
         public float RectangleLengthMeters => TrackLengthMeters;
+        public CarPlaceholder Car => _carPlaceholder;
+
+        /// <summary>Describes which curve detection path was used (shown in debug UI).</summary>
+        public string CurveDetectionMode { get; private set; } = "not built";
 
         public void Bind(
             TrackPlaceholder trackPlaceholder,
@@ -148,8 +156,13 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                 {
                     ApplySceneSetupTransform();
                     RebuildTrackFromSceneWaypoints();
-                    if (_carPlaceholder != null && _ovalTrack != null)
-                        _carPlaceholder.BindTrack(_ovalTrack);
+                    if (_carPlaceholder != null)
+                    {
+                        float scaleFactor = _trackScale / _sceneSetupNativeMaxExtent;
+                        _carPlaceholder.ApplyTrackScaleFactor(scaleFactor);
+                        if (_ovalTrack != null)
+                            _carPlaceholder.BindTrack(_ovalTrack);
+                    }
                     return;
                 }
 
@@ -421,11 +434,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             // Parent the car under the anchor and bind to track
             ParentCarToAnchor();
 
-            // Create visual indicator as child of anchor (only if no 3D model)
-            if (_trackModelPrefab == null)
-            {
-                CreateAnchorVisualUnderAnchor();
-            }
+            // Anchor visual disabled — track scene setup provides its own visuals
 
             _isAnchored = true;
             OnMarkerDetected();
@@ -566,10 +575,33 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                 return;
             }
 
-            _ovalTrack = new OvalTrackDefinition(localWaypoints);
+            // Priority: TrackSceneSetup manual difficulties > RacingLineData manual difficulties > auto-detect
+            if (_trackSceneSetup.HasManualCurveData)
+            {
+                _ovalTrack = new OvalTrackDefinition(localWaypoints, _trackSceneSetup.WaypointDifficulties);
+                CurveDetectionMode = $"MANUAL (SceneSetup, {localWaypoints.Length} wp)";
+            }
+            else if (_racingLineData != null && _racingLineData.HasManualCurveData
+                && _racingLineData.WaypointDifficulties.Length == localWaypoints.Length)
+            {
+                _ovalTrack = new OvalTrackDefinition(localWaypoints, _racingLineData.WaypointDifficulties);
+                CurveDetectionMode = $"MANUAL (RacingLine, {localWaypoints.Length} wp)";
+            }
+            else
+            {
+                _ovalTrack = new OvalTrackDefinition(localWaypoints);
+                CurveDetectionMode = $"AUTO (diff.len={_trackSceneSetup.WaypointDifficulties?.Length ?? 0}, wp={localWaypoints.Length})";
+            }
+            UnityEngine.Debug.Log($"[MarkerDetection] Curve detection: {CurveDetectionMode}");
 
             UnityEngine.Debug.Log($"[MarkerDetection] Track from SceneSetup: {_ovalTrack.TotalLength:F2}m, " +
                                   $"{_ovalTrack.WaypointCount} waypoints, scaleFactor={_trackScale / _sceneSetupNativeMaxExtent:F6}.");
+
+            // Show debug visualization if available
+            if (_trackDebugVisualizer != null && _worldAnchor != null)
+            {
+                _trackDebugVisualizer.ShowTrack(_ovalTrack, _worldAnchor.transform);
+            }
         }
 
         /// <summary>
@@ -595,6 +627,13 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             _carPlaceholder.transform.localPosition = Vector3.zero;
             _carPlaceholder.transform.localRotation = Quaternion.identity;
 
+            // Apply the same scale factor to the car that was applied to the track
+            if (_trackSceneSetup != null && _sceneSetupNativeMaxExtent > 0.001f)
+            {
+                float scaleFactor = _trackScale / _sceneSetupNativeMaxExtent;
+                _carPlaceholder.ApplyTrackScaleFactor(scaleFactor);
+            }
+
             if (_ovalTrack != null)
             {
                 _carPlaceholder.BindTrack(_ovalTrack);
@@ -615,8 +654,13 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             {
                 ApplySceneSetupTransform();
                 RebuildTrackFromSceneWaypoints();
-                if (_carPlaceholder != null && _ovalTrack != null)
-                    _carPlaceholder.BindTrack(_ovalTrack);
+                if (_carPlaceholder != null)
+                {
+                    float scaleFactor = _trackScale / _sceneSetupNativeMaxExtent;
+                    _carPlaceholder.ApplyTrackScaleFactor(scaleFactor);
+                    if (_ovalTrack != null)
+                        _carPlaceholder.BindTrack(_ovalTrack);
+                }
                 return;
             }
 

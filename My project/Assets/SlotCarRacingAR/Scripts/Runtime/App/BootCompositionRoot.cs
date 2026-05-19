@@ -17,6 +17,7 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void InitializePrerequisites()
         {
+            QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             ConfigureScreenOrientation();

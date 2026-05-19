@@ -16,6 +16,19 @@ namespace SlotCarRacingAR.Runtime.Features
         [Tooltip("Child transform whose children define the racing path waypoints (in order).")]
         [SerializeField] private Transform _pathParent;
 
+        [Tooltip("Manual curve difficulty per waypoint. Matches Path children order.")]
+        [SerializeField] private CurveDifficulty[] _waypointDifficulties = System.Array.Empty<CurveDifficulty>();
+
+        /// <summary>Manual difficulties array (matches path child order). Null/empty = use auto-detection.</summary>
+        public CurveDifficulty[] WaypointDifficulties => _waypointDifficulties;
+
+        /// <summary>True when manual difficulties are assigned and match waypoint count.</summary>
+        public bool HasManualCurveData =>
+            _waypointDifficulties != null &&
+            _pathParent != null &&
+            _waypointDifficulties.Length == _pathParent.childCount &&
+            _waypointDifficulties.Length > 0;
+
         /// <summary>
         /// Returns the waypoint positions in the local space of this transform.
         /// Since this object becomes a child of the anchor, these positions
@@ -81,13 +94,26 @@ namespace SlotCarRacingAR.Runtime.Features
                 int next = (i + 1) % count;
                 Transform wpNext = _pathParent.GetChild(next);
 
-                // Waypoint sphere
-                Gizmos.color = i == 0 ? Color.green : Color.yellow;
+                // Waypoint sphere colored by difficulty
+                CurveDifficulty diff = (i < _waypointDifficulties.Length) ? _waypointDifficulties[i] : CurveDifficulty.Straight;
+                Gizmos.color = i == 0 ? Color.green : GetDifficultyGizmoColor(diff);
                 Gizmos.DrawSphere(wp.position, 0.3f);
 
-                // Connection line
-                Gizmos.color = new Color(1f, 0.5f, 0f, 0.8f);
+                // Connection line colored by difficulty
+                Gizmos.color = GetDifficultyGizmoColor(diff);
                 Gizmos.DrawLine(wp.position, wpNext.position);
+            }
+        }
+
+        private static Color GetDifficultyGizmoColor(CurveDifficulty d)
+        {
+            switch (d)
+            {
+                case CurveDifficulty.Gentle: return new Color(0.4f, 1f, 0.4f);
+                case CurveDifficulty.Medium: return new Color(1f, 1f, 0.2f);
+                case CurveDifficulty.Sharp: return new Color(1f, 0.5f, 0f);
+                case CurveDifficulty.Hairpin: return new Color(1f, 0.15f, 0.15f);
+                default: return Color.yellow;
             }
         }
     }

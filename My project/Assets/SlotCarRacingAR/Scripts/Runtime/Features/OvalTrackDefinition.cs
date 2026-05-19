@@ -2,6 +2,16 @@ using UnityEngine;
 
 namespace SlotCarRacingAR.Runtime.Features
 {
+    /// <summary>Curve difficulty levels based on curvature angle.</summary>
+    public enum CurveDifficulty
+    {
+        Straight = 0,   // No curvature — full speed
+        Gentle = 1,     // Curva suave — near-max speed OK
+        Medium = 2,     // Curva media — ease off throttle
+        Sharp = 3,      // Curva cerrada — must brake before entering
+        Hairpin = 4     // Curva muy fuerte — heavy braking required
+    }
+
     /// <summary>
     /// Defines a slot-car racing circuit as a closed Catmull-Rom spline.
     /// The layout is modeled after a classic Scalextric track: long straight
@@ -82,11 +92,18 @@ namespace SlotCarRacingAR.Runtime.Features
         /// <summary>Approximate height of the design in normalised units.</summary>
         public const float DesignBoundingHeight = 1.84f;
 
-        /// <summary>Angle change per waypoint above which it is flagged as a curve.</summary>
-        private const float CurvatureThresholdDeg = 2.5f;
+        /// <summary>Angle thresholds for each difficulty tier (smoothed local curvature degrees).</summary>
+        private const float GentleThresholdDeg = 8.0f;
+        private const float MediumThresholdDeg = 18.0f;
+        private const float SharpThresholdDeg = 30.0f;
+        private const float HairpinThresholdDeg = 50.0f;
+        /// <summary>Smoothing window as fraction of total points for averaging local curvature.</summary>
+        private const float SmoothingWindowFraction = 0.03f;
+        private const int MinSmoothingWindow = 3;
 
         private readonly Vector3[] _waypoints;
-        private readonly bool[] _isCurve;
+        private readonly CurveDifficulty[] _curveDifficulty;
+        private readonly float[] _curvatureAngles; // raw angles for diagnostics
         private readonly float _totalLength;
         private readonly float[] _cumulativeLengths;
         private readonly float _boundingWidth;
@@ -95,6 +112,42 @@ namespace SlotCarRacingAR.Runtime.Features
         public int WaypointCount => _waypoints.Length;
         public float TotalLength => _totalLength;
         public float BoundingWidth => _boundingWidth;
+
+        /// <summary>Returns all interpolated waypoint positions (read-only reference).</summary>
+        public Vector3[] GetAllWaypoints() => _waypoints;
+        /// <summary>Returns per-waypoint difficulty classification (read-only reference).</summary>
+        public CurveDifficulty[] GetAllDifficulties() => _curveDifficulty;
+
+        /// <summary>Percentage of track points that are NOT Straight (0-100).</summary>
+        public float CurvePercentage
+        {
+            get
+            {
+                if (_curveDifficulty == null || _curveDifficulty.Length == 0) return 0f;
+                int count = 0;
+                for (int i = 0; i < _curveDifficulty.Length; i++)
+                    if (_curveDifficulty[i] != CurveDifficulty.Straight) count++;
+                return 100f * count / _curveDifficulty.Length;
+            }
+        }
+
+        /// <summary>Returns counts per difficulty level for diagnostics.</summary>
+        public void GetDifficultyCounts(out int straight, out int gentle, out int medium, out int sharp, out int hairpin)
+        {
+            straight = gentle = medium = sharp = hairpin = 0;
+            if (_curveDifficulty == null) return;
+            for (int i = 0; i < _curveDifficulty.Length; i++)
+            {
+                switch (_curveDifficulty[i])
+                {
+                    case CurveDifficulty.Straight: straight++; break;
+                    case CurveDifficulty.Gentle: gentle++; break;
+                    case CurveDifficulty.Medium: medium++; break;
+                    case CurveDifficulty.Sharp: sharp++; break;
+                    case CurveDifficulty.Hairpin: hairpin++; break;
+                }
+            }
+        }
         public float BoundingLength => _boundingLength;
 
         /// <summary>
@@ -144,17 +197,9 @@ namespace SlotCarRacingAR.Runtime.Features
             }
             _totalLength = accum + Vector3.Distance(_waypoints[total - 1], _waypoints[0]);
 
-            // Auto-detect curves from turning angle
-            _isCurve = new bool[total];
-            for (int i = 0; i < total; i++)
-            {
-                int prev = (i - 1 + total) % total;
-                int next = (i + 1) % total;
-                Vector3 v1 = (_waypoints[i] - _waypoints[prev]).normalized;
-                Vector3 v2 = (_waypoints[next] - _waypoints[i]).normalized;
-                if (v1.sqrMagnitude > 0.0001f && v2.sqrMagnitude > 0.0001f)
-                    _isCurve[i] = Vector3.Angle(v1, v2) > CurvatureThresholdDeg;
-            }
+            // Classify curves by difficulty
+            _curvatureAngles = ComputeCurvatureAngles(_waypoints, total);
+            _curveDifficulty = ClassifyCurves(_curvatureAngles, total);
 
             // Bounding box
             float minX = float.MaxValue, maxX = float.MinValue;
@@ -206,15 +251,68 @@ namespace SlotCarRacingAR.Runtime.Features
             }
             _totalLength = accum + Vector3.Distance(_waypoints[total - 1], _waypoints[0]);
 
-            _isCurve = new bool[total];
+            // Classify curves by difficulty
+            _curvatureAngles = ComputeCurvatureAngles(_waypoints, total);
+            _curveDifficulty = ClassifyCurves(_curvatureAngles, total);
+
+            float minX = float.MaxValue, maxX = float.MinValue;
+            float minZ = float.MaxValue, maxZ = float.MinValue;
             for (int i = 0; i < total; i++)
             {
-                int prev = (i - 1 + total) % total;
-                int next = (i + 1) % total;
-                Vector3 v1 = (_waypoints[i] - _waypoints[prev]).normalized;
-                Vector3 v2 = (_waypoints[next] - _waypoints[i]).normalized;
-                if (v1.sqrMagnitude > 0.0001f && v2.sqrMagnitude > 0.0001f)
-                    _isCurve[i] = Vector3.Angle(v1, v2) > CurvatureThresholdDeg;
+                if (_waypoints[i].x < minX) minX = _waypoints[i].x;
+                if (_waypoints[i].x > maxX) maxX = _waypoints[i].x;
+                if (_waypoints[i].z < minZ) minZ = _waypoints[i].z;
+                if (_waypoints[i].z > maxZ) maxZ = _waypoints[i].z;
+            }
+            _boundingWidth = maxX - minX;
+            _boundingLength = maxZ - minZ;
+        }
+
+        /// <summary>
+        /// Creates the track from raw pre-positioned waypoints with manual difficulty data.
+        /// Used with TrackSceneSetup + RacingLineData that has WaypointDifficulties.
+        /// </summary>
+        public OvalTrackDefinition(Vector3[] rawWaypoints, CurveDifficulty[] manualDifficulties, int resolutionPerSegment = 5)
+        {
+            int ctrlCount = rawWaypoints.Length;
+            int total = ctrlCount * resolutionPerSegment;
+
+            _waypoints = new Vector3[total];
+
+            for (int seg = 0; seg < ctrlCount; seg++)
+            {
+                Vector3 a = rawWaypoints[(seg - 1 + ctrlCount) % ctrlCount];
+                Vector3 b = rawWaypoints[seg];
+                Vector3 c = rawWaypoints[(seg + 1) % ctrlCount];
+                Vector3 d = rawWaypoints[(seg + 2) % ctrlCount];
+
+                for (int s = 0; s < resolutionPerSegment; s++)
+                {
+                    float t = (float)s / resolutionPerSegment;
+                    _waypoints[seg * resolutionPerSegment + s] = CatmullRom3D(a, b, c, d, t);
+                }
+            }
+
+            _cumulativeLengths = new float[total];
+            _cumulativeLengths[0] = 0f;
+            float accum = 0f;
+            for (int i = 1; i < total; i++)
+            {
+                accum += Vector3.Distance(_waypoints[i - 1], _waypoints[i]);
+                _cumulativeLengths[i] = accum;
+            }
+            _totalLength = accum + Vector3.Distance(_waypoints[total - 1], _waypoints[0]);
+
+            // Use manual difficulties
+            if (manualDifficulties != null && manualDifficulties.Length == ctrlCount)
+            {
+                _curveDifficulty = PropagateManualDifficulties(manualDifficulties, ctrlCount, resolutionPerSegment, total);
+                _curvatureAngles = new float[total];
+            }
+            else
+            {
+                _curvatureAngles = ComputeCurvatureAngles(_waypoints, total);
+                _curveDifficulty = ClassifyCurves(_curvatureAngles, total);
             }
 
             float minX = float.MaxValue, maxX = float.MinValue;
@@ -234,6 +332,8 @@ namespace SlotCarRacingAR.Runtime.Features
         /// Creates the track from a <see cref="RacingLineData"/> asset.
         /// The normalised waypoints are scaled by <paramref name="scale"/> and
         /// interpolated with Catmull-Rom for smooth car movement.
+        /// If the RacingLineData has manual curve data, it is propagated to interpolated
+        /// points instead of computing automatic curvature detection.
         /// </summary>
         public OvalTrackDefinition(RacingLineData racingLine, float scale, float heightOffset, int resolutionPerSegment = 5)
         {
@@ -271,16 +371,17 @@ namespace SlotCarRacingAR.Runtime.Features
             }
             _totalLength = accum + Vector3.Distance(_waypoints[total - 1], _waypoints[0]);
 
-            // Auto-detect curves from turning angle
-            _isCurve = new bool[total];
-            for (int i = 0; i < total; i++)
+            // Use manual curve data if available; otherwise fall back to auto-detection
+            if (racingLine.HasManualCurveData)
             {
-                int prev = (i - 1 + total) % total;
-                int next = (i + 1) % total;
-                Vector3 v1 = (_waypoints[i] - _waypoints[prev]).normalized;
-                Vector3 v2 = (_waypoints[next] - _waypoints[i]).normalized;
-                if (v1.sqrMagnitude > 0.0001f && v2.sqrMagnitude > 0.0001f)
-                    _isCurve[i] = Vector3.Angle(v1, v2) > CurvatureThresholdDeg;
+                _curveDifficulty = PropagateManualDifficulties(racingLine.WaypointDifficulties, ctrlCount, resolutionPerSegment, total);
+                _curvatureAngles = new float[total]; // zeros — not needed with manual data
+                UnityEngine.Debug.Log($"[OvalTrack] Using MANUAL curve data from RacingLineData ({ctrlCount} control points → {total} interpolated).");
+            }
+            else
+            {
+                _curvatureAngles = ComputeCurvatureAngles(_waypoints, total);
+                _curveDifficulty = ClassifyCurves(_curvatureAngles, total);
             }
 
             // Bounding box
@@ -314,9 +415,44 @@ namespace SlotCarRacingAR.Runtime.Features
 
         public bool IsCurveAtProgress(float progress)
         {
+            int idx = GetWaypointIndexAtProgress(progress);
+            return _curveDifficulty[idx] != CurveDifficulty.Straight;
+        }
+
+        /// <summary>Returns the curve difficulty at the given progress.</summary>
+        public CurveDifficulty GetDifficultyAtProgress(float progress)
+        {
+            int idx = GetWaypointIndexAtProgress(progress);
+            return _curveDifficulty[idx];
+        }
+
+        /// <summary>Returns the curvature angle (degrees) at the given progress for diagnostics.</summary>
+        public float CurvatureAngleAtProgress(float progress)
+        {
+            int idx = GetWaypointIndexAtProgress(progress);
+            return _curvatureAngles[idx];
+        }
+
+        /// <summary>
+        /// Resolves progress (0..1) to the waypoint index using arc-length,
+        /// matching the same segment the car is physically on.
+        /// </summary>
+        private int GetWaypointIndexAtProgress(float progress)
+        {
             progress = Mathf.Repeat(progress, 1f);
-            int idx = Mathf.FloorToInt(progress * _waypoints.Length) % _waypoints.Length;
-            return _isCurve[idx];
+            float dist = progress * _totalLength;
+            int count = _waypoints.Length;
+
+            for (int i = 0; i < count; i++)
+            {
+                int next = (i + 1) % count;
+                float segEnd = next == 0 ? _totalLength : _cumulativeLengths[next];
+
+                if (dist < segEnd)
+                    return i;
+            }
+
+            return 0;
         }
 
         public Vector3[] GetClosedLoopPoints()
@@ -370,6 +506,123 @@ namespace SlotCarRacingAR.Runtime.Features
                 (-p0 + p2) * t +
                 (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
                 (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+        }
+
+        /// <summary>
+        /// Computes curvature using LOCAL tangent change, then smooths with a moving average.
+        /// Step 1: At each point, compute the tangent (direction to next point).
+        /// Step 2: Measure the angle between consecutive tangents (= local curvature per step).
+        /// Step 3: Smooth with a moving average window to eliminate noise while preserving real curves.
+        /// Result: straight sections → ~0°, gentle curves → small angles, hairpins → large angles.
+        /// </summary>
+        private static float[] ComputeCurvatureAngles(Vector3[] waypoints, int total)
+        {
+            // Step 1: Compute tangent at each point
+            Vector3[] tangents = new Vector3[total];
+            for (int i = 0; i < total; i++)
+            {
+                int next = (i + 1) % total;
+                Vector3 dir = waypoints[next] - waypoints[i];
+                tangents[i] = dir.sqrMagnitude > 0.00001f ? dir.normalized : Vector3.forward;
+            }
+
+            // Step 2: Local curvature = angle between consecutive tangents
+            float[] rawAngles = new float[total];
+            for (int i = 0; i < total; i++)
+            {
+                int prev = (i - 1 + total) % total;
+                rawAngles[i] = Vector3.Angle(tangents[prev], tangents[i]);
+            }
+
+            // Step 3: Smooth with moving average
+            int smoothWindow = Mathf.Max(MinSmoothingWindow, Mathf.RoundToInt(total * SmoothingWindowFraction));
+            int halfWindow = smoothWindow / 2;
+            float[] smoothed = new float[total];
+
+            // Compute running sum for efficiency
+            for (int i = 0; i < total; i++)
+            {
+                float sum = 0f;
+                for (int j = -halfWindow; j <= halfWindow; j++)
+                {
+                    int idx = (i + j + total) % total;
+                    sum += rawAngles[idx];
+                }
+                smoothed[i] = sum / (halfWindow * 2 + 1);
+            }
+
+            return smoothed;
+        }
+
+        /// <summary>
+        /// Classifies each waypoint into a CurveDifficulty tier based on its curvature angle.
+        /// </summary>
+        private static CurveDifficulty[] ClassifyCurves(float[] angles, int total)
+        {
+            CurveDifficulty[] difficulty = new CurveDifficulty[total];
+            int[] counts = new int[5];
+
+            for (int i = 0; i < total; i++)
+            {
+                float a = angles[i];
+                if (a >= HairpinThresholdDeg)
+                    difficulty[i] = CurveDifficulty.Hairpin;
+                else if (a >= SharpThresholdDeg)
+                    difficulty[i] = CurveDifficulty.Sharp;
+                else if (a >= MediumThresholdDeg)
+                    difficulty[i] = CurveDifficulty.Medium;
+                else if (a >= GentleThresholdDeg)
+                    difficulty[i] = CurveDifficulty.Gentle;
+                else
+                    difficulty[i] = CurveDifficulty.Straight;
+
+                counts[(int)difficulty[i]]++;
+            }
+
+            UnityEngine.Debug.Log($"[OvalTrack] ClassifyCurves: Straight={counts[0]} Gentle={counts[1]} " +
+                                  $"Medium={counts[2]} Sharp={counts[3]} Hairpin={counts[4]} (total={total}, smoothWindow={Mathf.Max(MinSmoothingWindow, Mathf.RoundToInt(total * SmoothingWindowFraction))})");
+            return difficulty;
+        }
+
+        /// <summary>
+        /// Propagates per-control-point manual difficulties to all interpolated waypoints.
+        /// Each control point's difficulty is CENTERED on its position — spanning half the
+        /// resolution backward and half forward. This prevents the difficulty zone from
+        /// appearing shifted ahead of the actual curve geometry.
+        /// When two zones overlap, the higher difficulty wins (max).
+        /// </summary>
+        private static CurveDifficulty[] PropagateManualDifficulties(
+            CurveDifficulty[] controlDifficulties, int ctrlCount, int resolutionPerSegment, int total)
+        {
+            CurveDifficulty[] result = new CurveDifficulty[total];
+            int[] counts = new int[5];
+
+            int halfSpan = resolutionPerSegment / 2;
+
+            for (int seg = 0; seg < ctrlCount; seg++)
+            {
+                CurveDifficulty d = seg < controlDifficulties.Length
+                    ? controlDifficulties[seg]
+                    : CurveDifficulty.Straight;
+
+                // Center point of this control point in interpolated space
+                int center = seg * resolutionPerSegment;
+
+                for (int offset = -halfSpan; offset < resolutionPerSegment - halfSpan; offset++)
+                {
+                    int idx = (center + offset + total) % total;
+                    // Higher difficulty wins when zones overlap
+                    if (d > result[idx])
+                        result[idx] = d;
+                }
+            }
+
+            for (int i = 0; i < total; i++)
+                counts[(int)result[i]]++;
+
+            UnityEngine.Debug.Log($"[OvalTrack] Manual difficulties (centered): Straight={counts[0]} Gentle={counts[1]} " +
+                                  $"Medium={counts[2]} Sharp={counts[3]} Hairpin={counts[4]} (total={total})");
+            return result;
         }
     }
 }

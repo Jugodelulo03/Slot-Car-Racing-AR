@@ -1,28 +1,34 @@
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using SlotCarRacingAR.Runtime.Features;
 
 namespace SlotCarRacingAR.Editor
 {
     /// <summary>
     /// Editor window for placing racing-line waypoints on a 3D track model.
+    /// Each waypoint can be assigned a CurveDifficulty so curve zones are
+    /// defined manually instead of relying on automatic curvature detection.
     ///
     /// Workflow:
     ///  1. Drag the CIRCUIT.glb prefab into the scene
     ///  2. Open Window → Slot Car Racing → Waypoint Placer
     ///  3. Assign the track model in the window
     ///  4. Click "Start Placing" then click on the track surface to add waypoints
-    ///  5. Click "Export" to save as RacingLineData ScriptableObject
+    ///  5. Assign curve difficulty per waypoint (default = Straight)
+    ///  6. Click "Export" to save as RacingLineData ScriptableObject
     /// </summary>
     public sealed class TrackWaypointPlacer : EditorWindow
     {
         private GameObject _trackModel;
         private readonly List<Vector3> _waypoints = new();
+        private readonly List<CurveDifficulty> _waypointDifficulties = new();
         private bool _isPlacing;
         private Vector2 _scrollPos;
         private int _selectedIndex = -1;
         private float _gizmoSize = 0.3f;
         private readonly List<MeshCollider> _tempColliders = new();
+        private CurveDifficulty _brushDifficulty = CurveDifficulty.Straight;
 
         [MenuItem("Window/Slot Car Racing/Waypoint Placer")]
         private static void ShowWindow()
@@ -75,6 +81,25 @@ namespace SlotCarRacingAR.Editor
             EditorGUI.EndDisabledGroup();
 
             EditorGUILayout.Space(4);
+
+            // ── Curve Difficulty Brush ──
+            EditorGUILayout.LabelField("Curve Difficulty Brush", EditorStyles.miniBoldLabel);
+            _brushDifficulty = (CurveDifficulty)EditorGUILayout.EnumPopup("New Waypoint Difficulty", _brushDifficulty);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Paint Selected → Brush"))
+            {
+                if (_selectedIndex >= 0 && _selectedIndex < _waypointDifficulties.Count)
+                    _waypointDifficulties[_selectedIndex] = _brushDifficulty;
+            }
+            if (GUILayout.Button("Paint All → Brush"))
+            {
+                for (int i = 0; i < _waypointDifficulties.Count; i++)
+                    _waypointDifficulties[i] = _brushDifficulty;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4);
             EditorGUILayout.LabelField($"Waypoints: {_waypoints.Count}", EditorStyles.miniLabel);
 
             // Waypoint list
@@ -93,23 +118,33 @@ namespace SlotCarRacingAR.Editor
                 }
 
                 GUI.backgroundColor = origBg;
+
+                // Difficulty dropdown per waypoint (compact)
+                CurveDifficulty diff = _waypointDifficulties[i];
+                GUI.backgroundColor = GetDifficultyColor(diff);
+                _waypointDifficulties[i] = (CurveDifficulty)EditorGUILayout.EnumPopup(diff, GUILayout.Width(70));
+                GUI.backgroundColor = origBg;
+
                 EditorGUILayout.Vector3Field("", _waypoints[i]);
 
                 if (GUILayout.Button("▲", GUILayout.Width(24)) && i > 0)
                 {
                     (_waypoints[i], _waypoints[i - 1]) = (_waypoints[i - 1], _waypoints[i]);
+                    (_waypointDifficulties[i], _waypointDifficulties[i - 1]) = (_waypointDifficulties[i - 1], _waypointDifficulties[i]);
                     if (_selectedIndex == i) _selectedIndex--;
                 }
 
                 if (GUILayout.Button("▼", GUILayout.Width(24)) && i < _waypoints.Count - 1)
                 {
                     (_waypoints[i], _waypoints[i + 1]) = (_waypoints[i + 1], _waypoints[i]);
+                    (_waypointDifficulties[i], _waypointDifficulties[i + 1]) = (_waypointDifficulties[i + 1], _waypointDifficulties[i]);
                     if (_selectedIndex == i) _selectedIndex++;
                 }
 
                 if (GUILayout.Button("✕", GUILayout.Width(24)))
                 {
                     _waypoints.RemoveAt(i);
+                    _waypointDifficulties.RemoveAt(i);
                     if (_selectedIndex >= _waypoints.Count) _selectedIndex = _waypoints.Count - 1;
                     i--;
                 }
@@ -126,7 +161,10 @@ namespace SlotCarRacingAR.Editor
             if (GUILayout.Button("Clear All") && _waypoints.Count > 0)
             {
                 if (EditorUtility.DisplayDialog("Clear Waypoints", "Remove all waypoints?", "Yes", "Cancel"))
+                {
                     _waypoints.Clear();
+                    _waypointDifficulties.Clear();
+                }
             }
 
             EditorGUI.BeginDisabledGroup(_waypoints.Count < 3);
@@ -140,6 +178,18 @@ namespace SlotCarRacingAR.Editor
 
             if (GUILayout.Button("Log Waypoints to Console"))
                 LogWaypoints();
+        }
+
+        private static Color GetDifficultyColor(CurveDifficulty d)
+        {
+            switch (d)
+            {
+                case CurveDifficulty.Gentle: return new Color(0.6f, 1f, 0.6f);
+                case CurveDifficulty.Medium: return new Color(1f, 1f, 0.4f);
+                case CurveDifficulty.Sharp: return new Color(1f, 0.6f, 0.3f);
+                case CurveDifficulty.Hairpin: return new Color(1f, 0.3f, 0.3f);
+                default: return Color.white;
+            }
         }
 
         private void StartPlacing()
@@ -182,10 +232,9 @@ namespace SlotCarRacingAR.Editor
 
         private void OnSceneGUI(SceneView sceneView)
         {
-            // Draw existing waypoints
+            // Draw existing waypoints colored by difficulty
             if (_waypoints.Count > 0)
             {
-                Handles.color = Color.yellow;
                 for (int i = 0; i < _waypoints.Count; i++)
                 {
                     float size = _gizmoSize;
@@ -200,19 +249,28 @@ namespace SlotCarRacingAR.Editor
                     }
                     else
                     {
-                        Handles.color = Color.yellow;
+                        CurveDifficulty diff = i < _waypointDifficulties.Count
+                            ? _waypointDifficulties[i]
+                            : CurveDifficulty.Straight;
+                        Handles.color = GetDifficultyHandleColor(diff);
                     }
 
                     Handles.SphereHandleCap(0, _waypoints[i], Quaternion.identity, size, EventType.Repaint);
-                    Handles.Label(_waypoints[i] + Vector3.up * size, $" {i}",
+                    string label = i < _waypointDifficulties.Count && _waypointDifficulties[i] != CurveDifficulty.Straight
+                        ? $" {i} [{_waypointDifficulties[i]}]"
+                        : $" {i}";
+                    Handles.Label(_waypoints[i] + Vector3.up * size, label,
                         new GUIStyle(EditorStyles.boldLabel) { normal = { textColor = Color.white } });
                 }
 
-                // Draw line
-                Handles.color = new Color(1f, 0.5f, 0f, 0.8f);
+                // Draw line colored by difficulty
                 for (int i = 0; i < _waypoints.Count; i++)
                 {
                     int next = (i + 1) % _waypoints.Count;
+                    CurveDifficulty diff = i < _waypointDifficulties.Count
+                        ? _waypointDifficulties[i]
+                        : CurveDifficulty.Straight;
+                    Handles.color = GetDifficultyHandleColor(diff);
                     Handles.DrawLine(_waypoints[i], _waypoints[next], 2f);
                 }
             }
@@ -234,20 +292,22 @@ namespace SlotCarRacingAR.Editor
                     {
                         Undo.RecordObject(this, "Add Waypoint");
                         _waypoints.Add(hit.point);
+                        _waypointDifficulties.Add(_brushDifficulty);
                         _selectedIndex = _waypoints.Count - 1;
                         e.Use();
                         Repaint();
-                        Debug.Log($"[WaypointPlacer] Added waypoint {_waypoints.Count - 1} at {hit.point}");
+                        Debug.Log($"[WaypointPlacer] Added waypoint {_waypoints.Count - 1} at {hit.point} [{_brushDifficulty}]");
                     }
                     else
                     {
                         // Hit something else — still add if no track model filter
                         Undo.RecordObject(this, "Add Waypoint");
                         _waypoints.Add(hit.point);
+                        _waypointDifficulties.Add(_brushDifficulty);
                         _selectedIndex = _waypoints.Count - 1;
                         e.Use();
                         Repaint();
-                        Debug.Log($"[WaypointPlacer] Added waypoint {_waypoints.Count - 1} at {hit.point} (off-model)");
+                        Debug.Log($"[WaypointPlacer] Added waypoint {_waypoints.Count - 1} at {hit.point} (off-model) [{_brushDifficulty}]");
                     }
                 }
             }
@@ -257,12 +317,25 @@ namespace SlotCarRacingAR.Editor
             {
                 Undo.RecordObject(this, "Remove Last Waypoint");
                 _waypoints.RemoveAt(_waypoints.Count - 1);
+                _waypointDifficulties.RemoveAt(_waypointDifficulties.Count - 1);
                 _selectedIndex = _waypoints.Count - 1;
                 e.Use();
                 Repaint();
             }
 
             sceneView.Repaint();
+        }
+
+        private static Color GetDifficultyHandleColor(CurveDifficulty d)
+        {
+            switch (d)
+            {
+                case CurveDifficulty.Gentle: return new Color(0.4f, 1f, 0.4f);
+                case CurveDifficulty.Medium: return new Color(1f, 1f, 0.2f);
+                case CurveDifficulty.Sharp: return new Color(1f, 0.5f, 0f);
+                case CurveDifficulty.Hairpin: return new Color(1f, 0.15f, 0.15f);
+                default: return Color.yellow; // Straight
+            }
         }
 
         private void ExportToAsset()
@@ -298,10 +371,12 @@ namespace SlotCarRacingAR.Editor
             if (maxExtent < 0.0001f) maxExtent = 1f;
 
             asset.Waypoints = new Vector3[_waypoints.Count];
+            asset.WaypointDifficulties = new SlotCarRacingAR.Runtime.Features.CurveDifficulty[_waypoints.Count];
             for (int i = 0; i < _waypoints.Count; i++)
             {
                 Vector3 relative = _waypoints[i] - modelCenter;
                 asset.Waypoints[i] = relative / maxExtent;
+                asset.WaypointDifficulties[i] = _waypointDifficulties[i];
             }
 
             AssetDatabase.CreateAsset(asset, path);
