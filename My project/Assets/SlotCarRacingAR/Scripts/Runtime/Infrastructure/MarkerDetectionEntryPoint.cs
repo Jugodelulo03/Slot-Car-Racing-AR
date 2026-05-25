@@ -83,6 +83,12 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         public float TrackLengthMeters => _trackScale * OvalTrackDefinition.DesignBoundingHeight;
         public float HeightOffsetMeters => _heightOffsetMeters;
         public string AnchorStatus { get; private set; } = "waiting";
+
+        /// <summary>Fired once when the marker is first detected and track is anchored.</summary>
+        public event Action OnTrackAnchored;
+
+        /// <summary>Fired when tracking is lost after being established.</summary>
+        public event Action OnTrackLost;
         public int StableFrames => _sampleCount;
 
         // Multiplayer: expose the canonical pose derived from the marker
@@ -745,6 +751,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             IsTracking = true;
             ApplyTrackingState(true);
             UnityEngine.Debug.Log("[MarkerDetection] Track anchored — SLAM tracking active.");
+            OnTrackAnchored?.Invoke();
         }
 
         public void OnTrackingLost()
@@ -754,6 +761,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             ApplyTrackingState(false);
             _telemetryHooks?.OnTrackingLossDetected();
             UnityEngine.Debug.LogWarning("[MarkerDetection] Tracking lost.");
+            OnTrackLost?.Invoke();
         }
 
         private void ApplyTrackingState(bool isTracked)

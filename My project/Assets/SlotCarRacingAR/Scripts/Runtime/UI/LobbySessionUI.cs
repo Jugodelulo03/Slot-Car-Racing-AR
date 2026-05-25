@@ -45,7 +45,7 @@ namespace SlotCarRacingAR.Runtime.UI
                     _statusText.text = "Esperando jugador 2";
                     _statusText.color = new Color(1f, 0.843f, 0.25f); // amber
                     _detailText.text =
-                        "Tu IP: " + ipAddress + ":7777\n\n" +
+                        "Tu IP: " + ipAddress + "\n\n" +
                         "El otro jugador debe estar en la misma red\n" +
                         "y seleccionar \"Unirse\" en su dispositivo.";
                     SetButtonsVisible(false);

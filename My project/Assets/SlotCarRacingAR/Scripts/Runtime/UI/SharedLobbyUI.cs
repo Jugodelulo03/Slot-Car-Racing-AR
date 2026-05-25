@@ -47,15 +47,31 @@ namespace SlotCarRacingAR.Runtime.UI
             }
         }
 
-        public void UpdatePlayerCount(byte playerCount, PlayerRole localRole)
+        public void UpdatePlayerCount(byte playerCount, PlayerRole localRole, string localIp = "")
         {
-            // Player 1 (Host) — always connected if we're in this screen
-            _player1Status.text = "● Jugador 1 (Host)";
+            string ipSuffix = string.IsNullOrEmpty(localIp) ? "" : "  [" + localIp + "]";
+
+            // Player 1 (Host)
+            if (localRole == PlayerRole.Host)
+            {
+                _player1Status.text = "● Jugador 1 (Host)" + ipSuffix;
+            }
+            else
+            {
+                _player1Status.text = "● Jugador 1 (Host)";
+            }
             _player1Status.color = Player1Color;
 
             if (playerCount >= 2)
             {
-                _player2Status.text = "● Jugador 2 (Guest)";
+                if (localRole == PlayerRole.Guest)
+                {
+                    _player2Status.text = "● Jugador 2 (Guest)" + ipSuffix;
+                }
+                else
+                {
+                    _player2Status.text = "● Jugador 2 (Guest)";
+                }
                 _player2Status.color = Player2Color;
                 _guidanceText.text = "Apunten ambos teléfonos al mismo\nmarcador en la mesa.";
                 _guidanceText.color = Color.white;

@@ -1,4 +1,5 @@
 using SlotCarRacingAR.Runtime.Features;
+using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -14,6 +15,11 @@ namespace SlotCarRacingAR.Runtime.UI
         [SerializeField] private CarPlaceholderReference _carReference;
 
         private bool _isPressed;
+        private Image _image;
+        private readonly Color _normalColor = new Color(1f, 0.45f, 0.15f, 0.75f);
+        private readonly Color _pressedColor = new Color(1f, 0.75f, 0.18f, 0.95f);
+
+        public event Action<bool> OnHoldChanged;
 
         private void Awake()
         {
@@ -27,7 +33,8 @@ namespace SlotCarRacingAR.Runtime.UI
 
             if (TryGetComponent<Image>(out Image image))
             {
-                image.color = new Color(1f, 0.45f, 0.15f, 0.75f);
+                _image = image;
+                _image.color = _normalColor;
             }
         }
 
@@ -86,6 +93,12 @@ namespace SlotCarRacingAR.Runtime.UI
 
         private void ApplyState()
         {
+            if (_image != null)
+            {
+                _image.color = _isPressed ? _pressedColor : _normalColor;
+            }
+
+            OnHoldChanged?.Invoke(_isPressed);
             _carReference.Car?.SetAccelerationHeld(_isPressed);
         }
 

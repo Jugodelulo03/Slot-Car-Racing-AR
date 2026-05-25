@@ -67,9 +67,7 @@ namespace SlotCarRacingAR.Runtime.Debug
 
         private void OnGcSpike(long delta)
         {
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-            UnityEngine.Debug.Log($"[Telemetry] GC detected. Delta: {delta} bytes");
-#endif
+            // Intentionally silent — GC spikes are tracked via counter only
         }
     }
 }

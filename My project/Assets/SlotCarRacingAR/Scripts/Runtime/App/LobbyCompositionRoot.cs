@@ -15,18 +15,25 @@ namespace SlotCarRacingAR.Runtime.App
     /// </summary>
     public sealed class LobbyCompositionRoot : MonoBehaviour
     {
+        private const string SharedLobbyStateResourcePath = "NetworkPrefabs/SharedLobbyState";
+        private const uint SharedLobbyStateFallbackHash = 0xF2CA0E01u;
+
         private LobbyStartScreen _startScreen;
         private SessionManager _sessionManager;
         private LobbySessionUI _sessionUI;
         private LobbyJoinUI _joinUI;
         private SharedLobbyUI _sharedLobbyUI;
         private SharedLobbyState _sharedLobbyState;
+        private LanDiscovery _lanDiscovery;
         private GameObject _lobbyStatePrefab;
+        private bool _lobbyStatePrefabRegistered;
+        private bool _lobbyStatePrefabIsRuntimeFallback;
 
         private void Awake()
         {
             EnsureInputSystemUiModule();
             CreateSessionManager();
+            CreateLanDiscovery();
             CreateStartScreen();
         }
 
@@ -143,16 +150,66 @@ namespace SlotCarRacingAR.Runtime.App
             _sharedLobbyUI.OnContinueClicked += OnContinueToRace;
             sharedLobbyObj.SetActive(false);
 
-            // Prepare SharedLobbyState prefab for network spawning
-            _lobbyStatePrefab = new GameObject("SharedLobbyStatePrefab");
-            _lobbyStatePrefab.AddComponent<NetworkObject>();
-            _lobbyStatePrefab.AddComponent<SharedLobbyState>();
-            _lobbyStatePrefab.SetActive(false);
-            NetworkManager nm = NetworkManager.Singleton;
-            if (nm != null)
+            PrepareSharedLobbyStatePrefab();
+            _sessionManager?.SetSharedLobbyStatePrefab(_lobbyStatePrefab);
+        }
+
+        private void PrepareSharedLobbyStatePrefab()
+        {
+            _lobbyStatePrefabIsRuntimeFallback = false;
+            _lobbyStatePrefab = Resources.Load<GameObject>(SharedLobbyStateResourcePath);
+
+            if (_lobbyStatePrefab != null
+                && _lobbyStatePrefab.TryGetComponent(out NetworkObject networkObject)
+                && _lobbyStatePrefab.TryGetComponent(out SharedLobbyState _))
             {
-                nm.AddNetworkPrefab(_lobbyStatePrefab);
+                UnityEngine.Debug.Log("[Lobby] Loaded SharedLobbyState prefab from Resources. PrefabHash=" + networkObject.PrefabIdHash);
+                return;
             }
+
+            if (_lobbyStatePrefab != null)
+            {
+                UnityEngine.Debug.LogError("[Lobby] SharedLobbyState prefab resource is missing NetworkObject or SharedLobbyState.");
+            }
+            else
+            {
+                UnityEngine.Debug.LogError("[Lobby] SharedLobbyState prefab resource not found at Resources/" + SharedLobbyStateResourcePath + ".");
+            }
+
+            _lobbyStatePrefab = CreateRuntimeSharedLobbyStatePrefab();
+            _lobbyStatePrefabIsRuntimeFallback = true;
+        }
+
+        private static GameObject CreateRuntimeSharedLobbyStatePrefab()
+        {
+            GameObject prefab = new GameObject("SharedLobbyStateRuntimePrefab");
+            NetworkObject networkObject = prefab.AddComponent<NetworkObject>();
+            networkObject.SetSceneObjectStatus(false);
+            prefab.AddComponent<SharedLobbyState>();
+            prefab.SetActive(false);
+            DontDestroyOnLoad(prefab);
+
+            if (!TrySetNetworkObjectHash(networkObject, SharedLobbyStateFallbackHash))
+            {
+                UnityEngine.Debug.LogError("[Lobby] Runtime SharedLobbyState fallback cannot set a stable NetworkObject hash.");
+            }
+
+            return prefab;
+        }
+
+        private static bool TrySetNetworkObjectHash(NetworkObject networkObject, uint hash)
+        {
+            var hashField = typeof(NetworkObject).GetField(
+                "GlobalObjectIdHash",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (hashField == null)
+            {
+                return false;
+            }
+
+            hashField.SetValue(networkObject, hash);
+            return true;
         }
 
         private void CreateSessionManager()
@@ -161,6 +218,22 @@ namespace SlotCarRacingAR.Runtime.App
             managerObj.transform.SetParent(transform, false);
             _sessionManager = managerObj.AddComponent<SessionManager>();
             _sessionManager.OnSessionStateChanged += OnSessionStateChanged;
+        }
+
+        private void CreateLanDiscovery()
+        {
+            GameObject discoveryObj = new GameObject("LanDiscovery");
+            discoveryObj.transform.SetParent(transform, false);
+            _lanDiscovery = discoveryObj.AddComponent<LanDiscovery>();
+            _lanDiscovery.OnHostDiscovered += OnHostDiscovered;
+        }
+
+        private void OnHostDiscovered(string ip, int port, string hostName)
+        {
+            if (_joinUI != null && _joinUI.gameObject.activeSelf)
+            {
+                _joinUI.ShowDiscoveredHost(ip, port, hostName);
+            }
         }
 
         private static void EnsureInputSystemUiModule()
@@ -214,6 +287,7 @@ namespace SlotCarRacingAR.Runtime.App
         {
             UnityEngine.Debug.Log("[Lobby] Create Match selected — starting host session.");
             ShowSessionUI();
+            _sessionManager.SetSharedLobbyStatePrefab(_lobbyStatePrefab);
             _sessionManager.StartHostSession();
         }
 
@@ -227,10 +301,11 @@ namespace SlotCarRacingAR.Runtime.App
             ShowJoinUI();
         }
 
-        private void OnGuestConnect(string hostIp)
+        private void OnGuestConnect(string hostIp, int port)
         {
-            UnityEngine.Debug.Log("[Lobby] Guest connecting to " + hostIp);
-            _sessionManager.StartGuestSession(hostIp);
+            UnityEngine.Debug.Log("[Lobby] Guest connecting to " + hostIp + ":" + port);
+            _sessionManager.SetSharedLobbyStatePrefab(_lobbyStatePrefab);
+            _sessionManager.StartGuestSession(hostIp, port);
         }
 
         private void OnRetryGuestSession()
@@ -244,7 +319,15 @@ namespace SlotCarRacingAR.Runtime.App
 
             if (_sessionManager.Role == PlayerRole.Host)
             {
-                _sessionUI.UpdateState(state, _sessionManager.GetLocalIPAddress(), _sessionManager.FailureReason);
+                string hostAddr = _sessionManager.GetLocalIPAddress() + ":" + _sessionManager.BoundPort;
+                _sessionUI.UpdateState(state, hostAddr, _sessionManager.FailureReason);
+
+                // Start LAN broadcast once host is ready
+                if (state == SessionState.WaitingForPlayer)
+                {
+                    string localIp = _sessionManager.GetLocalIPAddress();
+                    _lanDiscovery.StartBroadcasting(localIp, _sessionManager.BoundPort);
+                }
             }
             else if (_sessionManager.Role == PlayerRole.Guest)
             {
@@ -260,7 +343,16 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void EnterSharedLobby()
         {
+            _lanDiscovery.StopAll();
             ShowSharedLobbyUI();
+            RegisterLobbyStatePrefab();
+
+            // If guest made it here, the connection is established — show 2 players immediately
+            if (_sessionManager.Role == PlayerRole.Guest)
+            {
+                _sharedLobbyUI.UpdatePlayerCount(2, PlayerRole.Guest, _sessionManager.GetLocalIPAddress());
+                _sharedLobbyUI.ShowConnectionConfirmation();
+            }
 
             // Host spawns the SharedLobbyState networked object
             if (_sessionManager.Role == PlayerRole.Host)
@@ -269,24 +361,70 @@ namespace SlotCarRacingAR.Runtime.App
             }
             else
             {
-                // Guest: find the spawned SharedLobbyState after a short delay
+                // Guest: find the spawned SharedLobbyState for disconnect detection
                 Invoke(nameof(FindSharedLobbyState), 0.5f);
             }
+        }
+
+        private void RegisterLobbyStatePrefab()
+        {
+            if (_lobbyStatePrefabRegistered) return;
+            NetworkManager nm = NetworkManager.Singleton;
+            if (nm == null || _lobbyStatePrefab == null) return;
+            if (nm.NetworkConfig.Prefabs.Contains(_lobbyStatePrefab))
+            {
+                _lobbyStatePrefabRegistered = true;
+                return;
+            }
+
+            nm.AddNetworkPrefab(_lobbyStatePrefab);
+            _lobbyStatePrefabRegistered = true;
         }
 
         private void SpawnSharedLobbyState()
         {
             if (_lobbyStatePrefab == null) return;
+            if (_sharedLobbyState != null && _sharedLobbyState.IsSpawned) return;
 
-            GameObject instance = Instantiate(_lobbyStatePrefab);
-            instance.SetActive(true);
-            instance.GetComponent<NetworkObject>().Spawn();
+            NetworkManager nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsListening)
+            {
+                UnityEngine.Debug.LogError("[Lobby] Cannot spawn SharedLobbyState before NetworkManager is listening.");
+                return;
+            }
 
-            _sharedLobbyState = instance.GetComponent<SharedLobbyState>();
+            RegisterLobbyStatePrefab();
+
+            NetworkObject networkObject;
+            if (_lobbyStatePrefabIsRuntimeFallback)
+            {
+                GameObject instance = Instantiate(_lobbyStatePrefab);
+                instance.SetActive(true);
+                networkObject = instance.GetComponent<NetworkObject>();
+                networkObject.Spawn();
+            }
+            else
+            {
+                networkObject = NetworkObject.InstantiateAndSpawn(_lobbyStatePrefab, nm);
+            }
+
+            if (networkObject == null)
+            {
+                UnityEngine.Debug.LogError("[Lobby] Failed to spawn SharedLobbyState NetworkObject.");
+                return;
+            }
+
+            _sharedLobbyState = networkObject.GetComponent<SharedLobbyState>();
+            if (_sharedLobbyState == null)
+            {
+                UnityEngine.Debug.LogError("[Lobby] Spawned SharedLobbyState object is missing SharedLobbyState component.");
+                return;
+            }
+
             _sharedLobbyState.OnPlayerCountChanged += OnLobbyPlayerCountChanged;
 
             // Initial UI update
-            _sharedLobbyUI.UpdatePlayerCount(_sharedLobbyState.PlayerCount.Value, _sessionManager.Role);
+            _sharedLobbyUI.UpdatePlayerCount(_sharedLobbyState.PlayerCount.Value, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
             if (_sharedLobbyState.PlayerCount.Value >= 2)
             {
                 _sharedLobbyUI.ShowConnectionConfirmation();
@@ -300,10 +438,15 @@ namespace SlotCarRacingAR.Runtime.App
             {
                 _sharedLobbyState = found;
                 _sharedLobbyState.OnPlayerCountChanged += OnLobbyPlayerCountChanged;
-                _sharedLobbyUI.UpdatePlayerCount(_sharedLobbyState.PlayerCount.Value, _sessionManager.Role);
+                _sharedLobbyUI.UpdatePlayerCount(_sharedLobbyState.PlayerCount.Value, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
                 if (_sharedLobbyState.PlayerCount.Value >= 2)
                 {
                     _sharedLobbyUI.ShowConnectionConfirmation();
+                }
+                else
+                {
+                    // NetworkVariable sync may still be in flight — recheck shortly
+                    Invoke(nameof(RecheckPlayerCount), 0.5f);
                 }
             }
             else
@@ -313,9 +456,33 @@ namespace SlotCarRacingAR.Runtime.App
             }
         }
 
+        private int _recheckAttempts;
+
+        private void RecheckPlayerCount()
+        {
+            if (_sharedLobbyState == null) return;
+            byte count = _sharedLobbyState.PlayerCount.Value;
+            UnityEngine.Debug.Log("[Lobby] Recheck PlayerCount=" + count + " attempt=" + _recheckAttempts);
+            _sharedLobbyUI.UpdatePlayerCount(count, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
+            if (count >= 2)
+            {
+                _sharedLobbyUI.ShowConnectionConfirmation();
+                _recheckAttempts = 0;
+            }
+            else if (_recheckAttempts < 5)
+            {
+                _recheckAttempts++;
+                Invoke(nameof(RecheckPlayerCount), 1.0f);
+            }
+            else
+            {
+                _recheckAttempts = 0;
+            }
+        }
+
         private void OnLobbyPlayerCountChanged(byte oldCount, byte newCount)
         {
-            _sharedLobbyUI.UpdatePlayerCount(newCount, _sessionManager.Role);
+            _sharedLobbyUI.UpdatePlayerCount(newCount, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
 
             if (oldCount < 2 && newCount >= 2)
             {
@@ -329,7 +496,32 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void OnContinueToRace()
         {
-            TransitionToRace();
+            if (_sharedLobbyState != null)
+            {
+                TransitionToRace();
+            }
+            else
+            {
+                // SharedLobbyState not yet replicated — wait for it before transitioning
+                StartCoroutine(WaitForSharedStateAndTransition());
+            }
+        }
+
+        private System.Collections.IEnumerator WaitForSharedStateAndTransition()
+        {
+            UnityEngine.Debug.Log("[Lobby] Waiting for SharedLobbyState before race transition...");
+            for (int i = 0; i < 20; i++) // up to 10 seconds
+            {
+                _sharedLobbyState = FindAnyObjectByType<SharedLobbyState>();
+                if (_sharedLobbyState != null)
+                {
+                    UnityEngine.Debug.Log("[Lobby] SharedLobbyState found — transitioning to Race.");
+                    TransitionToRace();
+                    yield break;
+                }
+                yield return new WaitForSeconds(0.5f);
+            }
+            UnityEngine.Debug.LogWarning("[Lobby] SharedLobbyState never appeared — cannot transition.");
         }
 
         private void OnRetrySession()
@@ -340,6 +532,8 @@ namespace SlotCarRacingAR.Runtime.App
         private void OnBackToStartScreen()
         {
             _sessionManager.Shutdown();
+            _lanDiscovery.StopAll();
+            _lobbyStatePrefabRegistered = false;
             ShowStartScreen();
         }
 
@@ -361,6 +555,7 @@ namespace SlotCarRacingAR.Runtime.App
                 _joinUI.gameObject.SetActive(true);
                 _joinUI.ResetToInput();
             }
+            _lanDiscovery.StartListening();
         }
 
         private void ShowSharedLobbyUI()

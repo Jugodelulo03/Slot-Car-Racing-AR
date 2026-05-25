@@ -5,6 +5,7 @@ using SlotCarRacingAR.Runtime.Debug;
 using SlotCarRacingAR.Runtime.Features;
 using SlotCarRacingAR.Runtime.Infrastructure;
 using SlotCarRacingAR.Runtime.UI;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -37,7 +38,27 @@ namespace SlotCarRacingAR.Runtime.App
         private Camera _arCamera;
         private ArSurfaceProbe _arSurfaceProbe;
         private SlotCarRacingAR.Runtime.UI.TrackSizePanel _trackSizePanel;
+        private ArSetupUI _arSetupUI;
+        private TrackStabilityEvaluator _stabilityEvaluator;
+        private SharedLobbyState _sharedState;
+        private CountdownOverlay _countdownOverlay;
+        private RaceHud _raceHud;
+        private CarPlaceholder _remoteCarPlaceholder;
         private bool _arRuntimeBootstrapStarted;
+        private bool _countdownStarted;
+        private bool _raceActive;
+        private bool _racePresentersConfigured;
+        private readonly RaceCarRuntimeState _hostRaceState = new RaceCarRuntimeState();
+        private readonly RaceCarRuntimeState _guestRaceState = new RaceCarRuntimeState();
+
+        private float _raceMaxSpeedMetersPerSecond = 0.25f;
+        private float _raceAccelerationRate = 0.3f;
+        private float _raceBrakeRate = 0.6f;
+        private float _racePenaltyDurationSeconds = 1.5f;
+
+        private const float RaceLaneOffsetMeters = 0.004f;
+        private const string HostCarResourcePath = "CarModels/RED";
+        private const string GuestCarResourcePath = "CarModels/GREEN";
 
         private void Awake()
         {
@@ -85,11 +106,86 @@ namespace SlotCarRacingAR.Runtime.App
 
 #if UNITY_EDITOR
             EnableArComponents(false);
+            SetupEditorCamera();
             ReportRuntimeBootstrapStatus("editor preview: AR runtime disabled");
+            // In Editor, marker detection is simulated — show detected + stable immediately
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.ShowMarkerDetected();
+                _arSetupUI.UpdateStability(TrackStabilityState.Stable);
+                _arSetupUI.UpdateReadySync(false, false);
+            }
+            // In editor without network, simulate countdown after 2s for testing
+            StartCoroutine(EditorSimulateCountdown());
 #else
             StartCoroutine(EnsureArRuntimeReady());
 #endif
         }
+
+        private void Update()
+        {
+            if (!_raceActive || _sharedState == null)
+            {
+                return;
+            }
+
+            if (_sharedState.Phase.Value != RacePhase.Racing)
+            {
+                return;
+            }
+
+            if (_sharedState.IsServer)
+            {
+                TickAuthoritativeRace(Time.deltaTime);
+            }
+
+            ApplyAuthoritativePresentation();
+        }
+
+#if UNITY_EDITOR
+        private void SetupEditorCamera()
+        {
+            if (_arCamera == null) return;
+
+            // Remove TrackedPoseDriver so camera is free to move
+            var poseDriver = _arCamera.GetComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+            if (poseDriver != null) poseDriver.enabled = false;
+
+            // Add overhead camera controller
+            var controller = _arCamera.GetComponent<SlotCarRacingAR.Runtime.Debug.EditorCameraController>();
+            if (controller == null)
+                controller = _arCamera.gameObject.AddComponent<SlotCarRacingAR.Runtime.Debug.EditorCameraController>();
+            controller.enabled = true;
+
+            // Ensure camera renders something (clear to skybox/solid color)
+            _arCamera.clearFlags = CameraClearFlags.SolidColor;
+            _arCamera.backgroundColor = new Color(0.15f, 0.15f, 0.2f);
+        }
+
+        private IEnumerator EditorSimulateCountdown()
+        {
+            // Wait a moment so UI is visible, then simulate both-ready + countdown
+            yield return new WaitForSeconds(2f);
+
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.UpdateReadySync(true, true);
+            }
+            _arSetupUI?.Hide();
+
+            // Simulate countdown ticks
+            _countdownOverlay?.Show(3);
+            yield return new WaitForSeconds(1f);
+            _countdownOverlay?.Show(2);
+            yield return new WaitForSeconds(1f);
+            _countdownOverlay?.Show(1);
+            yield return new WaitForSeconds(1f);
+            _countdownOverlay?.Show(0); // GO!
+            yield return new WaitForSeconds(0.8f);
+
+            StartRace();
+        }
+#endif
 
         private void CacheSceneReferences()
         {
@@ -110,6 +206,7 @@ namespace SlotCarRacingAR.Runtime.App
             _arCameraBackground = _arCamera != null ? _arCamera.GetComponent<ARCameraBackground>() : GetComponentInChildren<ARCameraBackground>(true);
             _arSurfaceProbe = GetComponent<ArSurfaceProbe>();
             _arDebugOverlay = GetComponent<ArDebugOverlay>();
+            _raceHud = GetComponentInChildren<RaceHud>(true);
         }
 
         private void WireSceneDependencies()
@@ -117,7 +214,11 @@ namespace SlotCarRacingAR.Runtime.App
             EnsureArCameraTrackedPoseDriver();
             EnsureSurfaceProbe();
             EnsureAnchorManager();
-            _accelerationInputPlaceholder?.Bind(_carPlaceholder);
+            if (_accelerationInputPlaceholder != null)
+            {
+                _accelerationInputPlaceholder.Bind(_carPlaceholder);
+                _accelerationInputPlaceholder.OnHoldChanged += HandleAccelerationHeldChanged;
+            }
             _markerDetectionEntryPoint?.Bind(_trackPlaceholder, _carPlaceholder, _telemetryHooks, _trackedImageManager);
             _markerDetectionEntryPoint?.BindAnchorManager(_arAnchorManager);
             EnsureTrackSizePanel();
@@ -553,7 +654,544 @@ namespace SlotCarRacingAR.Runtime.App
                 UnityEngine.Debug.LogWarning("[Race] Missing AR session or camera components required for device tracking.");
             }
 
+            // Create AR setup UI (scanning guidance + detection toast)
+            CreateArSetupUI();
+
+            // Create countdown overlay (hidden initially)
+            GameObject countdownObj = new GameObject("CountdownOverlay");
+            _countdownOverlay = countdownObj.AddComponent<CountdownOverlay>();
+
+            EnsureRaceHud();
+
+            // Disable acceleration input until race starts
+            if (_accelerationInputPlaceholder != null)
+            {
+                _accelerationInputPlaceholder.gameObject.SetActive(false);
+            }
+
+            // Subscribe to marker detection event
+            if (_markerDetectionEntryPoint != null)
+            {
+                _markerDetectionEntryPoint.OnTrackAnchored += HandleTrackAnchored;
+                _markerDetectionEntryPoint.OnTrackLost += HandleTrackingLost;
+            }
+
+            // Find the SharedLobbyState (persists from Lobby via NGO DontDestroyOnLoad)
+            SpawnOrFindRaceSetupState();
+
             UnityEngine.Debug.Log("[Race] Composition root initialized.");
+        }
+
+        private void CreateArSetupUI()
+        {
+            GameObject uiObj = new GameObject("ArSetupUI");
+            _arSetupUI = uiObj.AddComponent<ArSetupUI>();
+            _arSetupUI.ShowScanning();
+            _arSetupUI.OnReadyPressed += HandleLocalReadyPressed;
+
+            // Create stability evaluator
+            GameObject stabObj = new GameObject("TrackStabilityEvaluator");
+            _stabilityEvaluator = stabObj.AddComponent<TrackStabilityEvaluator>();
+            _stabilityEvaluator.OnStabilityChanged += HandleStabilityChanged;
+        }
+
+        private void EnsureRaceHud()
+        {
+            if (_raceHud == null)
+            {
+                _raceHud = gameObject.AddComponent<RaceHud>();
+            }
+
+            _raceHud.SetVisible(false);
+        }
+
+        private void HandleTrackAnchored()
+        {
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.ShowMarkerDetected();
+            }
+
+            // Start stability evaluation on the track anchor
+            if (_stabilityEvaluator != null && _markerDetectionEntryPoint != null)
+            {
+                // Use the track placeholder's parent (the anchor) as reference
+                Transform anchorRef = _trackPlaceholder != null ? _trackPlaceholder.transform.parent : null;
+                if (anchorRef != null)
+                {
+                    _stabilityEvaluator.BeginEvaluation(anchorRef);
+                }
+                else
+                {
+                    // Fallback: immediately mark as stable
+                    _stabilityEvaluator.BeginEvaluation(_trackPlaceholder != null ? _trackPlaceholder.transform : transform);
+                }
+            }
+
+            // Subscribe to tracking lost
+            if (_markerDetectionEntryPoint != null)
+            {
+                _markerDetectionEntryPoint.OnTrackAnchored -= HandleTrackAnchored; // one-shot
+            }
+        }
+
+        private void HandleStabilityChanged(TrackStabilityState state)
+        {
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.UpdateStability(state);
+            }
+        }
+
+        private void SpawnOrFindRaceSetupState()
+        {
+            // SharedLobbyState persists from Lobby scene via DontDestroyOnLoad (in OnNetworkSpawn)
+            StartCoroutine(FindSharedStateWithRetry());
+        }
+
+        private IEnumerator FindSharedStateWithRetry()
+        {
+            // May need a frame for DontDestroyOnLoad objects to be findable after scene load
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                // Also search children of NetworkManager (our parenting strategy)
+                if (NetworkManager.Singleton != null)
+                {
+                    _sharedState = NetworkManager.Singleton.GetComponentInChildren<SharedLobbyState>(true);
+                }
+                if (_sharedState == null)
+                {
+                    _sharedState = FindAnyObjectByType<SharedLobbyState>();
+                }
+                if (_sharedState != null)
+                {
+                    _sharedState.OnReadyStateChanged += HandleReadyStateChanged;
+                    _sharedState.OnCountdownTick += HandleCountdownTick;
+                    _sharedState.OnPhaseChanged += HandlePhaseChanged;
+                    _raceHud?.Bind(_sharedState);
+
+                    string role = _sharedState.IsServer ? "Host" : "Guest";
+                    if (_arSetupUI != null)
+                        _arSetupUI.UpdateConnectionStatus($"{role} | sync OK | {_sharedState.PlayerCount.Value}P", new Color(0.2f, 0.9f, 0.4f));
+
+                    UnityEngine.Debug.Log($"[Race] Found SharedLobbyState (attempt {attempt}). Role={role}, Players={_sharedState.PlayerCount.Value}");
+                    yield break;
+                }
+
+                yield return new WaitForSeconds(0.5f);
+            }
+
+            // Last resort: check NetworkManager's spawned objects directly
+            if (NetworkManager.Singleton != null && NetworkManager.Singleton.SpawnManager != null)
+            {
+                foreach (var kvp in NetworkManager.Singleton.SpawnManager.SpawnedObjects)
+                {
+                    SharedLobbyState sls = kvp.Value.GetComponent<SharedLobbyState>();
+                    if (sls != null)
+                    {
+                        _sharedState = sls;
+                        _sharedState.OnReadyStateChanged += HandleReadyStateChanged;
+                        _sharedState.OnCountdownTick += HandleCountdownTick;
+                        _sharedState.OnPhaseChanged += HandlePhaseChanged;
+                        _raceHud?.Bind(_sharedState);
+
+                        string role = _sharedState.IsServer ? "Host" : "Guest";
+                        if (_arSetupUI != null)
+                            _arSetupUI.UpdateConnectionStatus($"{role} | sync OK (spawn mgr) | {_sharedState.PlayerCount.Value}P", new Color(0.2f, 0.9f, 0.4f));
+
+                        UnityEngine.Debug.Log($"[Race] Found SharedLobbyState via SpawnManager. Role={role}");
+                        yield break;
+                    }
+                }
+            }
+
+            if (_arSetupUI != null)
+                _arSetupUI.UpdateConnectionStatus("⚠ Sin conexión de red", new Color(0.95f, 0.3f, 0.3f));
+            UnityEngine.Debug.LogWarning("[Race] SharedLobbyState not found after retries.");
+        }
+
+        private void HandleLocalReadyPressed(bool ready)
+        {
+            if (_sharedState != null)
+            {
+                _sharedState.SetLocalReady(ready);
+                UnityEngine.Debug.Log($"[Race] Local ready set to {ready}");
+            }
+            else
+            {
+                UnityEngine.Debug.LogWarning("[Race] Ready pressed but SharedLobbyState not found!");
+            }
+        }
+
+        private void HandleReadyStateChanged(bool hostReady, bool guestReady)
+        {
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.UpdateReadySync(hostReady, guestReady);
+            }
+
+            if (hostReady && guestReady && !_countdownStarted)
+            {
+                _countdownStarted = true;
+                UnityEngine.Debug.Log("[Race] Both players ready — freezing track and starting countdown.");
+
+                // Freeze AR tracking updates (track position is locked)
+                FreezeTrack();
+
+                // Host drives the countdown
+                if (_sharedState != null && _sharedState.IsServer)
+                {
+                    StartCoroutine(RunCountdownCoroutine());
+                }
+            }
+        }
+
+        private void FreezeTrack()
+        {
+            // Disable further AR tracking updates — the track stays where it is
+            if (_trackedImageManager != null)
+            {
+                _trackedImageManager.enabled = false;
+            }
+
+            // Hide setup UI
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.Hide();
+            }
+
+            UnityEngine.Debug.Log("[Race] Track frozen — AR image tracking disabled.");
+        }
+
+        private IEnumerator RunCountdownCoroutine()
+        {
+            // Host-driven countdown: 3, 2, 1, GO
+            _sharedState.BeginCountdown(); // sets Phase=Countdown, CountdownValue=3
+            yield return new WaitForSeconds(1f);
+
+            _sharedState.TickCountdown(2);
+            yield return new WaitForSeconds(1f);
+
+            _sharedState.TickCountdown(1);
+            yield return new WaitForSeconds(1f);
+
+            _sharedState.TickCountdown(0); // GO!
+            yield return new WaitForSeconds(0.8f);
+
+            _sharedState.BeginRacing(); // Phase=Racing
+        }
+
+        private void HandleCountdownTick(byte value)
+        {
+            if (_countdownOverlay != null)
+            {
+                _countdownOverlay.Show(value);
+            }
+        }
+
+        private void HandlePhaseChanged(RacePhase phase)
+        {
+            UnityEngine.Debug.Log($"[Race] Phase changed to: {phase}");
+
+            switch (phase)
+            {
+                case RacePhase.Countdown:
+                    // Freeze track on guest side too
+                    FreezeTrack();
+                    break;
+
+                case RacePhase.Racing:
+                    StartRace();
+                    break;
+
+                case RacePhase.Finished:
+                    FinishRacePresentation();
+                    break;
+            }
+        }
+
+        private void StartRace()
+        {
+            // Hide countdown overlay
+            if (_countdownOverlay != null)
+            {
+                _countdownOverlay.Hide();
+            }
+
+            // Enable acceleration input
+            if (_accelerationInputPlaceholder != null)
+            {
+                _accelerationInputPlaceholder.gameObject.SetActive(true);
+            }
+
+            ConfigureRacePresenters();
+            _raceActive = true;
+            _raceHud?.SetVisible(true);
+
+            if (_sharedState != null && _sharedState.IsServer)
+            {
+                RefreshRaceTuningFromCar();
+                _hostRaceState.Reset();
+                _guestRaceState.Reset();
+                UnityEngine.Debug.Log("[Race] Host authoritative race simulation started.");
+            }
+
+            UnityEngine.Debug.Log("[Race] Race started! Input enabled.");
+        }
+
+        private void FinishRacePresentation()
+        {
+            _raceActive = false;
+            if (_accelerationInputPlaceholder != null)
+            {
+                _accelerationInputPlaceholder.gameObject.SetActive(false);
+            }
+
+            _raceHud?.SetVisible(true);
+            ApplyAuthoritativePresentation();
+            UnityEngine.Debug.Log("[Race] Race finished. Winner player=" + (_sharedState != null ? _sharedState.WinnerPlayerId.Value : 0));
+        }
+
+        private void HandleAccelerationHeldChanged(bool isHeld)
+        {
+            if (_sharedState != null && _sharedState.Phase.Value == RacePhase.Racing)
+            {
+                _sharedState.SetLocalAccelerationHeld(isHeld);
+            }
+        }
+
+        private void ConfigureRacePresenters()
+        {
+            if (_racePresentersConfigured || _carPlaceholder == null || _carPlaceholder.Track == null)
+            {
+                return;
+            }
+
+            bool localIsHost = _sharedState == null || _sharedState.IsServer;
+            Color hostColor = new Color(0.95f, 0.12f, 0.12f);
+            Color guestColor = new Color(0.1f, 0.85f, 0.25f);
+            string localCarResourcePath = localIsHost ? HostCarResourcePath : GuestCarResourcePath;
+            string remoteCarResourcePath = localIsHost ? GuestCarResourcePath : HostCarResourcePath;
+
+            RefreshRaceTuningFromCar();
+
+            _carPlaceholder.SetLaneOffset(localIsHost ? -RaceLaneOffsetMeters : RaceLaneOffsetMeters);
+            if (!_carPlaceholder.LoadVisualFromResource(localCarResourcePath))
+            {
+                _carPlaceholder.SetVisualColor(localIsHost ? hostColor : guestColor);
+            }
+
+            if (_sharedState != null)
+            {
+                EnsureRemoteCarPresenter(
+                    localIsHost ? guestColor : hostColor,
+                    localIsHost ? RaceLaneOffsetMeters : -RaceLaneOffsetMeters,
+                    remoteCarResourcePath,
+                    _carPlaceholder.VisualRoot);
+            }
+
+            _carPlaceholder.SetExternalRaceStateEnabled(_sharedState != null);
+            _raceHud?.SetMaxSpeed(_raceMaxSpeedMetersPerSecond);
+
+            _racePresentersConfigured = true;
+        }
+
+        private void EnsureRemoteCarPresenter(Color color, float laneOffset, string carResourcePath, Transform transformTemplate)
+        {
+            if (_remoteCarPlaceholder != null || _carPlaceholder == null || _carPlaceholder.Track == null)
+            {
+                return;
+            }
+
+            GameObject remoteCarObject = new GameObject("RemoteCarPlaceholder");
+            remoteCarObject.transform.SetParent(_carPlaceholder.transform.parent, false);
+            remoteCarObject.transform.localScale = _carPlaceholder.transform.localScale;
+            _remoteCarPlaceholder = remoteCarObject.AddComponent<CarPlaceholder>();
+            _remoteCarPlaceholder.SetLaneOffset(laneOffset);
+            if (!_remoteCarPlaceholder.LoadVisualFromResource(carResourcePath, transformTemplate))
+            {
+                _remoteCarPlaceholder.SetVisualColor(color);
+            }
+
+            _remoteCarPlaceholder.SetExternalRaceStateEnabled(true);
+            _remoteCarPlaceholder.BindTrack(_carPlaceholder.Track);
+        }
+
+        private void RefreshRaceTuningFromCar()
+        {
+            if (_carPlaceholder == null)
+            {
+                return;
+            }
+
+            _raceMaxSpeedMetersPerSecond = _carPlaceholder.MaxSpeed;
+            _raceAccelerationRate = _carPlaceholder.AccelerationRate;
+            _raceBrakeRate = _carPlaceholder.BrakeRate;
+            _racePenaltyDurationSeconds = _carPlaceholder.SpinOutDuration;
+        }
+
+        private void TickAuthoritativeRace(float deltaTime)
+        {
+            if (_carPlaceholder == null || _carPlaceholder.Track == null || _sharedState == null)
+            {
+                return;
+            }
+
+            OvalTrackDefinition track = _carPlaceholder.Track;
+            StepRaceCar(_hostRaceState, _sharedState.HostAccelerationHeld.Value, track, deltaTime);
+            StepRaceCar(_guestRaceState, _sharedState.GuestAccelerationHeld.Value, track, deltaTime);
+
+            _sharedState.PublishRaceState(1, _hostRaceState.Progress, _hostRaceState.Speed, _hostRaceState.Lap, _hostRaceState.PenaltyRemainingSeconds > 0f);
+            _sharedState.PublishRaceState(2, _guestRaceState.Progress, _guestRaceState.Speed, _guestRaceState.Lap, _guestRaceState.PenaltyRemainingSeconds > 0f);
+
+            byte winner = ResolveWinner();
+            if (winner != 0)
+            {
+                _sharedState.FinishRace(winner);
+            }
+        }
+
+        private void StepRaceCar(RaceCarRuntimeState state, bool accelerating, OvalTrackDefinition track, float deltaTime)
+        {
+            if (track == null || track.TotalLength <= 0f)
+            {
+                return;
+            }
+
+            if (state.PenaltyRemainingSeconds > 0f)
+            {
+                state.PenaltyRemainingSeconds = Mathf.Max(0f, state.PenaltyRemainingSeconds - deltaTime);
+                state.Speed = 0f;
+                return;
+            }
+
+            state.Speed = accelerating
+                ? Mathf.MoveTowards(state.Speed, _raceMaxSpeedMetersPerSecond, _raceAccelerationRate * deltaTime)
+                : Mathf.MoveTowards(state.Speed, 0f, _raceBrakeRate * deltaTime);
+
+            CurveDifficulty difficulty = track.GetDifficultyAtProgress(state.Progress);
+            float safeSpeed = _carPlaceholder != null
+                ? _carPlaceholder.GetSafeSpeedForDifficulty(difficulty)
+                : _raceMaxSpeedMetersPerSecond;
+
+            if (difficulty > CurveDifficulty.Gentle && state.Speed > safeSpeed)
+            {
+                float triggerSpeed = state.Speed;
+                state.Speed = 0f;
+                state.PenaltyRemainingSeconds = _racePenaltyDurationSeconds;
+                UnityEngine.Debug.Log(
+                    $"[Race] Curve penalty. Difficulty={difficulty} Speed={triggerSpeed:F3} Safe={safeSpeed:F3}");
+                return;
+            }
+
+            float distance = state.Speed * deltaTime;
+            state.Progress += distance / track.TotalLength;
+            while (state.Progress >= 1f)
+            {
+                state.Progress -= 1f;
+                if (state.Lap < byte.MaxValue)
+                {
+                    state.Lap++;
+                }
+            }
+        }
+
+        private byte ResolveWinner()
+        {
+            bool hostFinished = _hostRaceState.Lap >= SharedLobbyState.RaceLapTarget;
+            bool guestFinished = _guestRaceState.Lap >= SharedLobbyState.RaceLapTarget;
+
+            if (hostFinished && guestFinished)
+            {
+                return _hostRaceState.Progress >= _guestRaceState.Progress ? (byte)1 : (byte)2;
+            }
+
+            if (hostFinished)
+            {
+                return 1;
+            }
+
+            return guestFinished ? (byte)2 : (byte)0;
+        }
+
+        private void ApplyAuthoritativePresentation()
+        {
+            if (_sharedState == null || _carPlaceholder == null)
+            {
+                return;
+            }
+
+            ConfigureRacePresenters();
+
+            bool localIsHost = _sharedState.IsServer;
+            _carPlaceholder.ApplyAuthoritativeState(
+                localIsHost ? _sharedState.HostProgress.Value : _sharedState.GuestProgress.Value,
+                localIsHost ? _sharedState.HostSpeed.Value : _sharedState.GuestSpeed.Value,
+                localIsHost ? _sharedState.HostLap.Value : _sharedState.GuestLap.Value,
+                localIsHost ? _sharedState.HostPenaltyActive.Value : _sharedState.GuestPenaltyActive.Value);
+
+            if (_remoteCarPlaceholder != null)
+            {
+                _remoteCarPlaceholder.ApplyAuthoritativeState(
+                    localIsHost ? _sharedState.GuestProgress.Value : _sharedState.HostProgress.Value,
+                    localIsHost ? _sharedState.GuestSpeed.Value : _sharedState.HostSpeed.Value,
+                    localIsHost ? _sharedState.GuestLap.Value : _sharedState.HostLap.Value,
+                    localIsHost ? _sharedState.GuestPenaltyActive.Value : _sharedState.HostPenaltyActive.Value);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_accelerationInputPlaceholder != null)
+            {
+                _accelerationInputPlaceholder.OnHoldChanged -= HandleAccelerationHeldChanged;
+            }
+
+            if (_sharedState != null)
+            {
+                _sharedState.OnReadyStateChanged -= HandleReadyStateChanged;
+                _sharedState.OnCountdownTick -= HandleCountdownTick;
+                _sharedState.OnPhaseChanged -= HandlePhaseChanged;
+            }
+
+            if (_markerDetectionEntryPoint != null)
+            {
+                _markerDetectionEntryPoint.OnTrackAnchored -= HandleTrackAnchored;
+                _markerDetectionEntryPoint.OnTrackLost -= HandleTrackingLost;
+            }
+        }
+
+        private sealed class RaceCarRuntimeState
+        {
+            public float Progress;
+            public float Speed;
+            public byte Lap;
+            public float PenaltyRemainingSeconds;
+
+            public void Reset()
+            {
+                Progress = 0f;
+                Speed = 0f;
+                Lap = 0;
+                PenaltyRemainingSeconds = 0f;
+            }
+        }
+
+        private void HandleTrackingLost()
+        {
+            if (_stabilityEvaluator != null)
+            {
+                _stabilityEvaluator.StopEvaluation();
+            }
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.ShowTrackingLost();
+                _arSetupUI.RevokeReady();
+            }
+            if (_sharedState != null && _sharedState.IsServer)
+            {
+                _sharedState.RevokeAllReadiness();
+            }
         }
     }
 }

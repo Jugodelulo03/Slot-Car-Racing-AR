@@ -2,6 +2,17 @@ using UnityEngine;
 
 namespace SlotCarRacingAR.Runtime.Features
 {
+    public enum CarPaletteColor
+    {
+        Red = 0,
+        Green = 1,
+        Blue = 2,
+        Purple = 3,
+        Yellow = 4,
+        Orange = 5,
+        White = 6
+    }
+
     /// <summary>
     /// Car entity that follows an OvalTrackDefinition spline.
     /// Graduated curve penalty system with 4 difficulty levels:
@@ -50,6 +61,10 @@ namespace SlotCarRacingAR.Runtime.Features
         private float _trackProgress; // 0..1 around the loop
         private int _lapCount;
         private bool _accelerationHeld;
+        private bool _externalRaceStateEnabled;
+        private float _laneOffsetMeters;
+        private Color _visualColor = Color.white;
+        private bool _hasVisualColor;
 
         // Penalty states
         private enum CarState { Normal, SpinOut }
@@ -60,6 +75,13 @@ namespace SlotCarRacingAR.Runtime.Features
         private Vector3 _spinOutDirection;  // forward direction at moment of spin-out
 
         private const float CubeSize = 1.5f;
+        private const int PaletteTextureSize = 8;
+        private const string BodyPaletteMeshName = "Car.001_palette_0";
+        private static readonly Vector2Int[] BodyPaletteSourceCells =
+        {
+            new(3, 4),
+            new(3, 5),
+        };
 
         // --- Public diagnostics ---
         public float Speed => _currentSpeed;
@@ -69,6 +91,9 @@ namespace SlotCarRacingAR.Runtime.Features
         public bool IsInPenalty => _state == CarState.SpinOut;
         public bool IsUnstable => false;
         public float MaxSpeed => _maxSpeedMetersPerSecond;
+        public float AccelerationRate => _accelerationRate;
+        public float BrakeRate => _brakeRate;
+        public float SpinOutDuration => _spinOutDuration;
         public CurveDifficulty CurrentDifficulty => _track != null ? _track.GetDifficultyAtProgress(_trackProgress) : CurveDifficulty.Straight;
         public float CurrentSafeSpeed => GetSafeSpeed(CurrentDifficulty);
         public float CurveSpeedLimit => CurrentSafeSpeed; // backward compat
@@ -76,6 +101,8 @@ namespace SlotCarRacingAR.Runtime.Features
         public float TrackTotalLength => _track != null ? _track.TotalLength : 0f;
         public float CurrentCurvatureAngle => _track != null ? _track.CurvatureAngleAtProgress(_trackProgress) : 0f;
         public string StateLabel => _state.ToString();
+        public OvalTrackDefinition Track => _track;
+        public Transform VisualRoot => _sceneCarModel;
 
         /// <summary>
         /// Applies the same scale factor used for the track to the car.
@@ -97,6 +124,7 @@ namespace SlotCarRacingAR.Runtime.Features
             _spinOutTimer = 0f;
 
             EnsureVisual();
+            ApplyVisualColor();
             UpdateCarTransform();
 
             UnityEngine.Debug.Log("[Car] Bound to oval track.");
@@ -110,6 +138,182 @@ namespace SlotCarRacingAR.Runtime.Features
         public void Accelerate(float input)
         {
             _accelerationHeld = input > 0.5f;
+        }
+
+        public float GetSafeSpeedForDifficulty(CurveDifficulty difficulty)
+        {
+            return GetSafeSpeed(difficulty);
+        }
+
+        public void SetExternalRaceStateEnabled(bool enabled)
+        {
+            _externalRaceStateEnabled = enabled;
+            if (enabled)
+            {
+                _accelerationHeld = false;
+            }
+        }
+
+        public void SetLaneOffset(float laneOffsetMeters)
+        {
+            _laneOffsetMeters = laneOffsetMeters;
+            UpdateCarTransform();
+        }
+
+        public void SetVisualColor(Color color)
+        {
+            _visualColor = color;
+            _hasVisualColor = true;
+            ApplyVisualColor();
+        }
+
+        public bool LoadVisualFromResource(string resourcePath, Transform transformTemplate = null)
+        {
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return false;
+            }
+
+            GameObject prefab = Resources.Load<GameObject>(resourcePath);
+            if (prefab == null)
+            {
+                UnityEngine.Debug.LogWarning($"[Car] Could not load car visual from Resources path '{resourcePath}'.");
+                return false;
+            }
+
+            Transform template = transformTemplate != null ? transformTemplate : _sceneCarModel;
+            Vector3 localPosition = template != null ? template.localPosition : Vector3.zero;
+            Quaternion localRotation = template != null ? template.localRotation : Quaternion.identity;
+            Vector3 localScale = template != null ? template.localScale : Vector3.one;
+
+            ClearVisualChildren();
+
+            GameObject visual = Instantiate(prefab, transform, false);
+            visual.name = prefab.name + "_PlayerVisual";
+            visual.transform.localPosition = localPosition;
+            visual.transform.localRotation = localRotation;
+            visual.transform.localScale = localScale;
+            _sceneCarModel = visual.transform;
+            _sceneCarModel.gameObject.SetActive(true);
+
+            foreach (Collider collider in _sceneCarModel.GetComponentsInChildren<Collider>(true))
+            {
+                Destroy(collider);
+            }
+
+            ApplyVisualColor();
+            UnityEngine.Debug.Log($"[Car] Loaded Resources car visual '{resourcePath}'.");
+            return true;
+        }
+
+        public bool CloneVisualFrom(CarPlaceholder source, CarPaletteColor paletteColor)
+        {
+            if (source == null || source._sceneCarModel == null)
+            {
+                return false;
+            }
+
+            ClearVisualChildren();
+
+            GameObject clone = Instantiate(source._sceneCarModel.gameObject, transform, false);
+            clone.name = source._sceneCarModel.name + "_PlayerVisual";
+            _sceneCarModel = clone.transform;
+            _sceneCarModel.gameObject.SetActive(true);
+
+            foreach (Collider collider in _sceneCarModel.GetComponentsInChildren<Collider>(true))
+            {
+                Destroy(collider);
+            }
+
+            return ApplyPaletteColor(paletteColor);
+        }
+
+        public bool ApplyPaletteColor(CarPaletteColor paletteColor)
+        {
+            if (_sceneCarModel == null)
+            {
+                return false;
+            }
+
+            Vector2Int targetCell = GetBodyPaletteTargetCell(paletteColor);
+            bool changedAnyMesh = false;
+
+            MeshFilter[] meshFilters = _sceneCarModel.GetComponentsInChildren<MeshFilter>(true);
+            int changedUvCount = 0;
+            for (int meshFilterIndex = 0; meshFilterIndex < meshFilters.Length; meshFilterIndex++)
+            {
+                MeshFilter meshFilter = meshFilters[meshFilterIndex];
+                Mesh sourceMesh = meshFilter.sharedMesh;
+                if (sourceMesh == null || !IsBodyPaletteMesh(meshFilter, sourceMesh))
+                {
+                    continue;
+                }
+
+                Mesh mesh = Instantiate(sourceMesh);
+                mesh.name = sourceMesh.name + "_" + paletteColor;
+                Vector2[] uvs = mesh.uv;
+                bool changedMesh = false;
+
+                for (int uvIndex = 0; uvIndex < uvs.Length; uvIndex++)
+                {
+                    if (!TryGetPaletteCell(uvs[uvIndex], out Vector2Int sourceCell))
+                    {
+                        continue;
+                    }
+
+                    if (!IsBodySourceCell(sourceCell))
+                    {
+                        continue;
+                    }
+
+                    uvs[uvIndex] = MoveUvToPaletteCell(uvs[uvIndex], sourceCell, targetCell);
+                    changedMesh = true;
+                    changedUvCount++;
+                }
+
+                if (!changedMesh)
+                {
+                    Destroy(mesh);
+                    continue;
+                }
+
+                mesh.uv = uvs;
+                meshFilter.sharedMesh = mesh;
+                changedAnyMesh = true;
+            }
+
+            if (changedAnyMesh)
+            {
+                UnityEngine.Debug.Log($"[Car] Applied palette color: {paletteColor}. ChangedUVs={changedUvCount}");
+            }
+            else
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[Car] Palette color {paletteColor} did not change any UVs. " +
+                    $"SceneModel={_sceneCarModel.name}, MeshFilters={meshFilters.Length}");
+            }
+
+            return changedAnyMesh;
+        }
+
+        public void ApplyAuthoritativeState(float progress, float speed, int lap, bool penaltyActive)
+        {
+            if (_track == null)
+            {
+                return;
+            }
+
+            _trackProgress = Mathf.Repeat(progress, 1f);
+            _currentSpeed = Mathf.Max(0f, speed);
+            _lapCount = Mathf.Max(0, lap);
+            _state = penaltyActive ? CarState.SpinOut : CarState.Normal;
+
+            UpdateCarTransform();
+
+            if (penaltyActive)
+            {
+                ApplyPenaltyPresentation();
+            }
         }
 
         private float GetSafeSpeed(CurveDifficulty difficulty)
@@ -127,6 +331,7 @@ namespace SlotCarRacingAR.Runtime.Features
         private void Update()
         {
             if (_track == null) return;
+            if (_externalRaceStateEnabled) return;
 
             float dt = Time.deltaTime;
 
@@ -188,7 +393,7 @@ namespace SlotCarRacingAR.Runtime.Features
         private void BeginSpinOut()
         {
             _state = CarState.SpinOut;
-            _spinOutTrackPos = _track.GetPositionAtProgress(_trackProgress);
+            _spinOutTrackPos = GetLanePosition(_trackProgress);
             _spinOutDirection = _track.GetForwardAtProgress(_trackProgress);
             _spinOutStartYaw = transform.localEulerAngles.y;
             _spinOutTimer = _spinOutDuration;
@@ -228,13 +433,36 @@ namespace SlotCarRacingAR.Runtime.Features
         {
             if (_track == null) return;
 
-            Vector3 pos = _track.GetPositionAtProgress(_trackProgress);
+            Vector3 pos = GetLanePosition(_trackProgress);
             Vector3 fwd = _track.GetForwardAtProgress(_trackProgress);
 
             transform.localPosition = pos;
             if (fwd.sqrMagnitude > 0.001f)
             {
                 transform.localRotation = Quaternion.LookRotation(fwd, Vector3.up);
+            }
+        }
+
+        private Vector3 GetLanePosition(float progress)
+        {
+            Vector3 pos = _track.GetPositionAtProgress(progress);
+            Vector3 fwd = _track.GetForwardAtProgress(progress);
+            Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+            if (right.sqrMagnitude > 0.001f)
+            {
+                pos += right * _laneOffsetMeters;
+            }
+
+            return pos;
+        }
+
+        private void ApplyPenaltyPresentation()
+        {
+            Vector3 fwd = _track.GetForwardAtProgress(_trackProgress);
+            if (fwd.sqrMagnitude > 0.001f)
+            {
+                float yaw = Mathf.Sin(Time.time * 18f) * 35f;
+                transform.localRotation = Quaternion.LookRotation(fwd, Vector3.up) * Quaternion.Euler(0f, yaw, 0f);
             }
         }
 
@@ -251,15 +479,143 @@ namespace SlotCarRacingAR.Runtime.Features
                         Destroy(child.gameObject);
                 }
                 _sceneCarModel.gameObject.SetActive(true);
+                ApplyVisualColor();
                 UnityEngine.Debug.Log("[Car] Using scene-placed car model.");
                 return;
             }
 
             // Clear any existing visual children
-            for (int i = transform.childCount - 1; i >= 0; i--)
-                Destroy(transform.GetChild(i).gameObject);
+            ClearVisualChildren();
 
             CreateCubeFallback();
+            ApplyVisualColor();
+        }
+
+        private void ClearVisualChildren()
+        {
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                Destroy(transform.GetChild(i).gameObject);
+            }
+        }
+
+        private static bool IsBodyPaletteMesh(MeshFilter meshFilter, Mesh mesh)
+        {
+            if (mesh.name.Contains(BodyPaletteMeshName) || meshFilter.name.Contains(BodyPaletteMeshName))
+            {
+                return true;
+            }
+
+            Renderer renderer = meshFilter.GetComponent<Renderer>();
+            if (renderer == null)
+            {
+                return false;
+            }
+
+            Material[] materials = renderer.sharedMaterials;
+            for (int i = 0; i < materials.Length; i++)
+            {
+                Material material = materials[i];
+                if (material != null && material.name.ToLowerInvariant().Contains("palette"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetPaletteCell(Vector2 uv, out Vector2Int cell)
+        {
+            int x = Mathf.FloorToInt(uv.x * PaletteTextureSize);
+            int y = Mathf.FloorToInt(uv.y * PaletteTextureSize);
+            if (x < 0 || x >= PaletteTextureSize || y < 0 || y >= PaletteTextureSize)
+            {
+                cell = default;
+                return false;
+            }
+
+            cell = new Vector2Int(x, y);
+            return true;
+        }
+
+        private static bool IsBodySourceCell(Vector2Int cell)
+        {
+            for (int i = 0; i < BodyPaletteSourceCells.Length; i++)
+            {
+                if (BodyPaletteSourceCells[i] == cell)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Vector2 MoveUvToPaletteCell(Vector2 uv, Vector2Int sourceCell, Vector2Int targetCell)
+        {
+            return new Vector2(
+                (targetCell.x + 0.5f) / PaletteTextureSize,
+                (targetCell.y + 0.5f) / PaletteTextureSize);
+        }
+
+        private static Vector2Int GetBodyPaletteTargetCell(CarPaletteColor paletteColor)
+        {
+            switch (paletteColor)
+            {
+                case CarPaletteColor.Green:
+                    return new Vector2Int(5, 6);
+                case CarPaletteColor.Blue:
+                    return new Vector2Int(1, 6);
+                case CarPaletteColor.Purple:
+                    return new Vector2Int(5, 5);
+                case CarPaletteColor.Yellow:
+                    return new Vector2Int(5, 2);
+                case CarPaletteColor.White:
+                    return new Vector2Int(1, 0);
+                case CarPaletteColor.Orange:
+                    return new Vector2Int(1, 3);
+                case CarPaletteColor.Red:
+                default:
+                    return new Vector2Int(3, 4);
+            }
+        }
+
+        private void ApplyVisualColor()
+        {
+            if (!_hasVisualColor)
+            {
+                return;
+            }
+
+            Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                Material[] materials = renderer.materials;
+                for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+                {
+                    Material material = materials[materialIndex];
+                    if (material == null)
+                    {
+                        continue;
+                    }
+
+                    if (material.HasProperty("_BaseColor"))
+                    {
+                        material.SetColor("_BaseColor", _visualColor);
+                    }
+                    else if (material.HasProperty("_Color"))
+                    {
+                        material.SetColor("_Color", _visualColor);
+                    }
+                }
+            }
         }
 
         private void LoadCarModel()
