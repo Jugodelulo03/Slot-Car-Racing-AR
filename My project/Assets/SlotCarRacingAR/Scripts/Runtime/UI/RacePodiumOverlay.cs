@@ -23,8 +23,8 @@ namespace SlotCarRacingAR.Runtime.UI
         private Canvas _canvas;
         private GameObject _root;
         private Text _titleText;
-        private Text _firstText;
-        private Text _secondText;
+        private readonly Image[] _resultRowBackgrounds = new Image[SharedLobbyState.MaxPlayers];
+        private readonly Text[] _resultRows = new Text[SharedLobbyState.MaxPlayers];
         private Text _statusText;
         private Button _primaryButton;
         private Button _secondaryButton;
@@ -81,32 +81,60 @@ namespace SlotCarRacingAR.Runtime.UI
             if (sharedState == null)
             {
                 _titleText.text = "PODIO";
-                _firstText.text = "1ro  PLAYER 1  --:--";
-                _secondText.text = "2do  PLAYER 2  --:--";
+                for (int i = 0; i < _resultRows.Length; i++)
+                {
+                    SetResultRow(i, i < 2, FormatRow(i + 1, (byte)(i + 1), -1f), GetRankTextColor(i + 1));
+                }
+
                 return;
             }
 
-            byte winner = sharedState.WinnerPlayerId.Value;
-            float hostTime = sharedState.HostFinishTimeSeconds.Value;
-            float guestTime = sharedState.GuestFinishTimeSeconds.Value;
-            bool hasHostTime = hostTime >= 0f;
-            bool hasGuestTime = guestTime >= 0f;
+            byte[] players = new byte[SharedLobbyState.MaxPlayers];
+            int playerCount = 0;
+            for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+            {
+                if (sharedState.HasPlayer(playerId))
+                {
+                    players[playerCount] = playerId;
+                    playerCount++;
+                }
+            }
 
-            byte firstPlayer = winner != 0
-                ? winner
-                : hasHostTime && hasGuestTime && guestTime < hostTime ? (byte)2 : (byte)1;
-            byte secondPlayer = firstPlayer == 1 ? (byte)2 : (byte)1;
+            if (playerCount == 0)
+            {
+                players[0] = 1;
+                playerCount = 1;
+            }
 
-            _titleText.text = firstPlayer == 1 ? "GANA PLAYER 1" : "GANA PLAYER 2";
-            _firstText.text = FormatRow(1, firstPlayer, firstPlayer == 1 ? hostTime : guestTime);
-            _secondText.text = FormatRow(2, secondPlayer, secondPlayer == 1 ? hostTime : guestTime);
+            SortPlayersByResult(sharedState, players, playerCount);
+
+            byte winner = sharedState.WinnerPlayerId.Value != 0 ? sharedState.WinnerPlayerId.Value : players[0];
+            _titleText.text = "GANA PLAYER " + winner;
+
+            for (int rowIndex = 0; rowIndex < _resultRows.Length; rowIndex++)
+            {
+                bool active = rowIndex < playerCount;
+                byte playerId = active ? players[rowIndex] : (byte)(rowIndex + 1);
+                SetResultRow(
+                    rowIndex,
+                    active,
+                    FormatRow(rowIndex + 1, playerId, sharedState.GetFinishTime(playerId)),
+                    GetRankTextColor(rowIndex + 1));
+            }
         }
 
         private void RefreshRematchActions(SharedLobbyState sharedState)
         {
             bool isHost = sharedState != null && sharedState.IsServer;
             bool requested = sharedState != null && sharedState.RematchRequested.Value;
-            bool guestAccepted = sharedState != null && sharedState.GuestRematchAccepted.Value;
+            byte localPlayerId = sharedState != null ? sharedState.LocalPlayerId : (byte)0;
+            if (sharedState != null && localPlayerId == 0)
+            {
+                localPlayerId = sharedState.IsServer ? (byte)1 : (byte)2;
+            }
+
+            bool localAccepted = sharedState != null && sharedState.GetRematchAccepted(localPlayerId);
+            bool allAccepted = sharedState != null && AreAllActivePlayersAccepted(sharedState);
 
             if (isHost)
             {
@@ -116,15 +144,15 @@ namespace SlotCarRacingAR.Runtime.UI
                 if (requested)
                 {
                     _primaryAction = PrimaryAction.None;
-                    _statusText.text = guestAccepted ? "REVANCHA LISTA" : "ESPERANDO AL RIVAL";
-                    _statusText.color = guestAccepted ? RetroUi.Green : RetroUi.Yellow;
-                    SetButton(_primaryButton, _primaryButtonText, guestAccepted ? "VOLVIENDO" : "ESPERANDO", false);
+                    _statusText.text = allAccepted ? "REVANCHA LISTA" : "ESPERANDO RIVALES";
+                    _statusText.color = RetroUi.TealDark;
+                    SetButton(_primaryButton, _primaryButtonText, allAccepted ? "VOLVIENDO" : "ESPERANDO", false);
                 }
                 else
                 {
                     _primaryAction = PrimaryAction.RequestRematch;
                     _statusText.text = "SOLO EL HOST PUEDE PEDIR REVANCHA";
-                    _statusText.color = RetroUi.White;
+                    _statusText.color = RetroUi.TealDark;
                     SetButton(_primaryButton, _primaryButtonText, "REVANCHA", true);
                 }
 
@@ -135,9 +163,9 @@ namespace SlotCarRacingAR.Runtime.UI
             {
                 _primaryAction = PrimaryAction.AcceptRematch;
                 _secondaryAction = SecondaryAction.ReturnToLobby;
-                _statusText.text = guestAccepted ? "REVANCHA ACEPTADA" : "EL HOST PIDE REVANCHA";
-                _statusText.color = guestAccepted ? RetroUi.Green : RetroUi.Yellow;
-                SetButton(_primaryButton, _primaryButtonText, guestAccepted ? "ACEPTADO" : "ACEPTAR REVANCHA", !guestAccepted);
+                _statusText.text = localAccepted ? "REVANCHA ACEPTADA" : "EL HOST PIDE REVANCHA";
+                _statusText.color = RetroUi.TealDark;
+                SetButton(_primaryButton, _primaryButtonText, localAccepted ? "ACEPTADO" : "ACEPTAR REVANCHA", !localAccepted);
                 SetButton(_secondaryButton, _secondaryButtonText, "SALIR A SALA", true);
             }
             else
@@ -145,7 +173,7 @@ namespace SlotCarRacingAR.Runtime.UI
                 _primaryAction = PrimaryAction.None;
                 _secondaryAction = SecondaryAction.MainMenu;
                 _statusText.text = "ESPERANDO AL HOST";
-                _statusText.color = RetroUi.Yellow;
+                _statusText.color = RetroUi.TealDark;
                 SetButton(_primaryButton, _primaryButtonText, "ESPERANDO HOST", false);
                 SetButton(_secondaryButton, _secondaryButtonText, "MENU PRINCIPAL", true);
             }
@@ -201,38 +229,44 @@ namespace SlotCarRacingAR.Runtime.UI
                 TextAnchor.MiddleCenter,
                 FontStyle.BoldAndItalic);
 
-            _firstText = RetroUi.CreateText(
-                panel,
-                "FirstPlace",
-                "1ro  PLAYER 1  --:--",
-                new Vector2(0.10f, 0.56f),
-                new Vector2(0.90f, 0.72f),
-                36,
-                RetroUi.Black,
-                TextAnchor.MiddleCenter,
-                FontStyle.BoldAndItalic,
-                false);
+            for (int rowIndex = 0; rowIndex < _resultRows.Length; rowIndex++)
+            {
+                float top = 0.77f - rowIndex * 0.105f;
+                float bottom = top - 0.095f;
+                RectTransform rowPanel = RetroUi.CreatePanel(
+                    panel,
+                    "ResultRowPanel" + (rowIndex + 1),
+                    new Vector2(0.11f, bottom + 0.005f),
+                    new Vector2(0.89f, top - 0.005f),
+                    RetroUi.TealDark,
+                    false,
+                    false,
+                    true);
+                _resultRowBackgrounds[rowIndex] = rowPanel.GetComponent<Image>();
 
-            _secondText = RetroUi.CreateText(
-                panel,
-                "SecondPlace",
-                "2do  PLAYER 2  --:--",
-                new Vector2(0.10f, 0.40f),
-                new Vector2(0.90f, 0.54f),
-                30,
-                RetroUi.TealDark,
-                TextAnchor.MiddleCenter,
-                FontStyle.BoldAndItalic,
-                false);
+                _resultRows[rowIndex] = RetroUi.CreateText(
+                    rowPanel,
+                    "ResultRow" + (rowIndex + 1),
+                    FormatRow(rowIndex + 1, (byte)(rowIndex + 1), -1f),
+                    Vector2.zero,
+                    Vector2.one,
+                    rowIndex == 0 ? 35 : 28,
+                    GetRankTextColor(rowIndex + 1),
+                    TextAnchor.MiddleCenter,
+                    FontStyle.BoldAndItalic);
+                _resultRows[rowIndex].resizeTextForBestFit = true;
+                _resultRows[rowIndex].resizeTextMinSize = 18;
+                _resultRows[rowIndex].resizeTextMaxSize = rowIndex == 0 ? 35 : 28;
+            }
 
             _statusText = RetroUi.CreateText(
                 panel,
                 "RematchStatus",
                 "ESPERANDO AL HOST",
-                new Vector2(0.08f, 0.30f),
-                new Vector2(0.92f, 0.39f),
+                new Vector2(0.08f, 0.27f),
+                new Vector2(0.92f, 0.35f),
                 24,
-                RetroUi.Yellow,
+                RetroUi.TealDark,
                 TextAnchor.MiddleCenter,
                 FontStyle.BoldAndItalic);
 
@@ -296,6 +330,91 @@ namespace SlotCarRacingAR.Runtime.UI
             if (text != null)
             {
                 text.text = label.ToUpperInvariant();
+            }
+        }
+
+        private void SetResultRow(int rowIndex, bool active, string text, Color color)
+        {
+            if (rowIndex < 0 || rowIndex >= _resultRows.Length || _resultRows[rowIndex] == null)
+            {
+                return;
+            }
+
+            _resultRows[rowIndex].gameObject.SetActive(active);
+            _resultRows[rowIndex].text = text;
+            _resultRows[rowIndex].color = color;
+            if (_resultRowBackgrounds[rowIndex] != null)
+            {
+                _resultRowBackgrounds[rowIndex].gameObject.SetActive(active);
+                _resultRowBackgrounds[rowIndex].color = RetroUi.TealDark;
+            }
+        }
+
+        private static void SortPlayersByResult(SharedLobbyState sharedState, byte[] players, int count)
+        {
+            for (int i = 0; i < count - 1; i++)
+            {
+                for (int j = i + 1; j < count; j++)
+                {
+                    if (ComesAfter(sharedState, players[i], players[j]))
+                    {
+                        byte temp = players[i];
+                        players[i] = players[j];
+                        players[j] = temp;
+                    }
+                }
+            }
+        }
+
+        private static bool ComesAfter(SharedLobbyState sharedState, byte firstPlayer, byte secondPlayer)
+        {
+            float firstTime = sharedState.GetFinishTime(firstPlayer);
+            float secondTime = sharedState.GetFinishTime(secondPlayer);
+            if (firstTime >= 0f && secondTime >= 0f)
+            {
+                return firstTime > secondTime;
+            }
+
+            if (firstTime >= 0f)
+            {
+                return false;
+            }
+
+            if (secondTime >= 0f)
+            {
+                return true;
+            }
+
+            float firstProgress = sharedState.GetLap(firstPlayer) + sharedState.GetProgress(firstPlayer);
+            float secondProgress = sharedState.GetLap(secondPlayer) + sharedState.GetProgress(secondPlayer);
+            return firstProgress < secondProgress;
+        }
+
+        private static bool AreAllActivePlayersAccepted(SharedLobbyState sharedState)
+        {
+            for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+            {
+                if (sharedState.HasPlayer(playerId) && !sharedState.GetRematchAccepted(playerId))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static Color GetRankTextColor(int rank)
+        {
+            switch (rank)
+            {
+                case 1:
+                    return new Color(1.00f, 0.73f, 0.10f);
+                case 2:
+                    return new Color(0.78f, 0.82f, 0.86f);
+                case 3:
+                    return new Color(0.95f, 0.52f, 0.18f);
+                default:
+                    return RetroUi.Cream;
             }
         }
 

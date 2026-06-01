@@ -16,6 +16,8 @@ namespace SlotCarRacingAR.Runtime.UI
         private Button _continueButton;
         private GameObject _continueButtonObj;
         private Image _guestLight;
+        private readonly Text[] _playerStatusLabels = new Text[SharedLobbyState.MaxPlayers + 1];
+        private readonly Image[] _playerStatusLights = new Image[SharedLobbyState.MaxPlayers + 1];
         private float _confirmationTimer;
 
         public event System.Action OnContinueClicked;
@@ -48,35 +50,68 @@ namespace SlotCarRacingAR.Runtime.UI
         public void UpdatePlayerCount(byte playerCount, PlayerRole localRole, string localIp = "")
         {
             string ipSuffix = string.IsNullOrEmpty(localIp) ? "" : "  [" + localIp + "]";
-            _player1Status.text = localRole == PlayerRole.Host
-                ? "HOST CONECTADO" + ipSuffix
-                : "HOST CONECTADO";
+            for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+            {
+                bool connected = playerId <= playerCount;
+                string label = GetPlayerLabel(playerId);
+                if (connected)
+                {
+                    bool showIp = localRole == PlayerRole.Host && playerId == 1;
+                    SetPlayerStatus(playerId, label + " CONECTADO" + (showIp ? ipSuffix : ""), RetroUi.Green, RetroUi.Green);
+                }
+                else
+                {
+                    SetPlayerStatus(playerId, "P" + playerId + " ESPERANDO", RetroUi.Yellow, RetroUi.Yellow);
+                }
+            }
 
             if (playerCount >= 2)
             {
-                _player2Status.text = localRole == PlayerRole.Guest
-                    ? "INVITADO CONECTADO" + ipSuffix
-                    : "INVITADO CONECTADO";
-                _player2Status.color = RetroUi.Green;
-                if (_guestLight != null)
-                {
-                    _guestLight.color = RetroUi.Green;
-                }
-
-                _guidanceText.text = "Coloca el marcador sobre la mesa. Ambos deben apuntar al mismo marcador.";
+                _guidanceText.text = playerCount + " jugadores conectados. Pueden empezar ahora o esperar hasta 4.";
                 _guidanceText.color = RetroUi.White;
                 SetContinueVisible(true);
             }
             else
             {
-                _player2Status.text = "ESPERANDO RIVAL";
-                _player2Status.color = RetroUi.Yellow;
-                if (_guestLight != null)
-                {
-                    _guestLight.color = RetroUi.Yellow;
-                }
+                _guidanceText.text = "Comparte el codigo o espera a que tus rivales aparezcan en la red local.";
+                _guidanceText.color = RetroUi.Yellow;
+                SetContinueVisible(false);
+            }
+        }
 
-                _guidanceText.text = "Comparte el codigo o espera a que tu rival aparezca en la red local.";
+        public void UpdatePlayerSlots(SharedLobbyState sharedState, PlayerRole localRole, string localIp = "")
+        {
+            if (sharedState == null)
+            {
+                UpdatePlayerCount(0, localRole, localIp);
+                return;
+            }
+
+            string ipSuffix = string.IsNullOrEmpty(localIp) ? "" : "  [" + localIp + "]";
+            byte connectedCount = sharedState.PlayerCount.Value;
+            for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+            {
+                bool connected = sharedState.HasPlayer(playerId);
+                if (connected)
+                {
+                    bool showIp = localRole == PlayerRole.Host && playerId == 1;
+                    SetPlayerStatus(playerId, GetPlayerLabel(playerId) + " CONECTADO" + (showIp ? ipSuffix : ""), RetroUi.Green, RetroUi.Green);
+                }
+                else
+                {
+                    SetPlayerStatus(playerId, "P" + playerId + " ESPERANDO", RetroUi.Yellow, RetroUi.Yellow);
+                }
+            }
+
+            if (connectedCount >= 2)
+            {
+                _guidanceText.text = connectedCount + " jugadores conectados. Pueden empezar ahora o esperar hasta 4.";
+                _guidanceText.color = RetroUi.White;
+                SetContinueVisible(true);
+            }
+            else
+            {
+                _guidanceText.text = "Comparte el codigo o espera a que tus rivales aparezcan en la red local.";
                 _guidanceText.color = RetroUi.Yellow;
                 SetContinueVisible(false);
             }
@@ -84,21 +119,21 @@ namespace SlotCarRacingAR.Runtime.UI
 
         public void ShowDisconnected()
         {
-            _player2Status.text = "INVITADO DESCONECTADO";
+            _player2Status.text = "RIVAL DESCONECTADO";
             _player2Status.color = RetroUi.Red;
             if (_guestLight != null)
             {
                 _guestLight.color = RetroUi.Red;
             }
 
-            _guidanceText.text = "Esperando reconexion...";
+            _guidanceText.text = "Esperando reconexion o nuevos jugadores...";
             _guidanceText.color = RetroUi.Red;
             SetContinueVisible(false);
         }
 
         public void ShowConnectionConfirmation()
         {
-            _confirmationText.text = "Jugador 2 conectado!";
+            _confirmationText.text = "Jugador conectado!";
             _confirmationText.color = RetroUi.Green;
             _confirmationText.gameObject.SetActive(true);
             _confirmationTimer = 2.5f;
@@ -163,35 +198,19 @@ namespace SlotCarRacingAR.Runtime.UI
             RectTransform statusCard = RetroUi.CreatePanel(
                 panel,
                 "StatusCard",
-                new Vector2(0.08f, 0.23f),
-                new Vector2(0.44f, 0.49f),
+                new Vector2(0.08f, 0.18f),
+                new Vector2(0.46f, 0.52f),
                 RetroUi.CreamLight,
                 false);
 
-            RetroUi.CreateStatusLight(statusCard, "HostLight", new Vector2(0.06f, 0.58f), new Vector2(0.17f, 0.82f), RetroUi.Red);
-            _guestLight = RetroUi.CreateStatusLight(statusCard, "GuestLight", new Vector2(0.06f, 0.18f), new Vector2(0.17f, 0.42f), RetroUi.Yellow);
+            CreatePlayerStatusRow(statusCard, 1, 0.75f, "HOST CONECTADO", RetroUi.Green);
+            CreatePlayerStatusRow(statusCard, 2, 0.51f, "P2 ESPERANDO", RetroUi.Yellow);
+            CreatePlayerStatusRow(statusCard, 3, 0.27f, "P3 ESPERANDO", RetroUi.Yellow);
+            CreatePlayerStatusRow(statusCard, 4, 0.03f, "P4 ESPERANDO", RetroUi.Yellow);
 
-            _player1Status = RetroUi.CreateText(
-                statusCard,
-                "Player1Status",
-                "HOST CONECTADO",
-                new Vector2(0.18f, 0.52f),
-                new Vector2(0.94f, 0.88f),
-                26,
-                RetroUi.Red,
-                TextAnchor.MiddleLeft,
-                FontStyle.BoldAndItalic);
-
-            _player2Status = RetroUi.CreateText(
-                statusCard,
-                "Player2Status",
-                "ESPERANDO RIVAL",
-                new Vector2(0.18f, 0.12f),
-                new Vector2(0.94f, 0.48f),
-                26,
-                RetroUi.Yellow,
-                TextAnchor.MiddleLeft,
-                FontStyle.BoldAndItalic);
+            _player1Status = _playerStatusLabels[1];
+            _player2Status = _playerStatusLabels[2];
+            _guestLight = _playerStatusLights[2];
 
             RetroUi.CreateText(
                 panel,
@@ -227,6 +246,54 @@ namespace SlotCarRacingAR.Runtime.UI
             _continueButtonObj = _continueButton.gameObject;
             _continueButton.onClick.AddListener(() => OnContinueClicked?.Invoke());
             _continueButtonObj.SetActive(false);
+        }
+
+        private void CreatePlayerStatusRow(RectTransform parent, byte playerId, float yMin, string text, Color color)
+        {
+            _playerStatusLights[playerId] = RetroUi.CreateStatusLight(
+                parent,
+                "Player" + playerId + "Light",
+                new Vector2(0.06f, yMin + 0.035f),
+                new Vector2(0.16f, yMin + 0.185f),
+                color);
+
+            _playerStatusLabels[playerId] = RetroUi.CreateText(
+                parent,
+                "Player" + playerId + "Status",
+                text,
+                new Vector2(0.19f, yMin),
+                new Vector2(0.94f, yMin + 0.22f),
+                23,
+                color,
+                TextAnchor.MiddleLeft,
+                FontStyle.BoldAndItalic);
+            _playerStatusLabels[playerId].resizeTextForBestFit = true;
+            _playerStatusLabels[playerId].resizeTextMinSize = 15;
+            _playerStatusLabels[playerId].resizeTextMaxSize = 23;
+        }
+
+        private void SetPlayerStatus(byte playerId, string text, Color textColor, Color lightColor)
+        {
+            if (playerId < 1 || playerId > SharedLobbyState.MaxPlayers)
+            {
+                return;
+            }
+
+            if (_playerStatusLabels[playerId] != null)
+            {
+                _playerStatusLabels[playerId].text = text;
+                _playerStatusLabels[playerId].color = textColor;
+            }
+
+            if (_playerStatusLights[playerId] != null)
+            {
+                _playerStatusLights[playerId].color = lightColor;
+            }
+        }
+
+        private static string GetPlayerLabel(byte playerId)
+        {
+            return playerId == 1 ? "HOST" : "PLAYER " + playerId;
         }
     }
 }

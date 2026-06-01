@@ -245,7 +245,7 @@ namespace SlotCarRacingAR.Runtime.UI
             RetroUi.CreateText(
                 panel,
                 "MarkerHint",
-                "Ambos deben apuntar al mismo marcador",
+                "Todos deben apuntar al mismo marcador",
                 new Vector2(0.55f, 0.32f),
                 new Vector2(0.91f, 0.46f),
                 26,

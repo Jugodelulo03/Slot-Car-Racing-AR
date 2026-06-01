@@ -1,4 +1,5 @@
 using System;
+using SlotCarRacingAR.Runtime.Infrastructure;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,6 +24,7 @@ namespace SlotCarRacingAR.Runtime.UI
         public void Show(byte value)
         {
             _panel.SetActive(true);
+            GameAudio.PlayCountdown(value);
 
             if (value == 0)
             {

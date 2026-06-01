@@ -45,25 +45,91 @@ namespace SlotCarRacingAR.Runtime.App
         private CountdownOverlay _countdownOverlay;
         private RaceHud _raceHud;
         private RacePodiumOverlay _podiumOverlay;
-        private CarPlaceholder _remoteCarPlaceholder;
+        private readonly CarPlaceholder[] _carPresenters = new CarPlaceholder[SharedLobbyState.MaxPlayers + 1];
         [SerializeField] private bool _enableArDebugOverlay;
         private bool _arRuntimeBootstrapStarted;
         private bool _countdownStarted;
         private bool _raceActive;
         private bool _racePresentersConfigured;
+        private bool _localPenaltyWasActive;
         private float _raceElapsedSeconds;
         private byte _lastObservedRematchLobbySignal;
-        private readonly RaceCarRuntimeState _hostRaceState = new RaceCarRuntimeState();
-        private readonly RaceCarRuntimeState _guestRaceState = new RaceCarRuntimeState();
+        private readonly RaceCarRuntimeState[] _raceStates =
+        {
+            null,
+            new RaceCarRuntimeState(),
+            new RaceCarRuntimeState(),
+            new RaceCarRuntimeState(),
+            new RaceCarRuntimeState()
+        };
 
         private float _raceMaxSpeedMetersPerSecond = 0.25f;
         private float _raceAccelerationRate = 0.3f;
         private float _raceBrakeRate = 0.6f;
         private float _racePenaltyDurationSeconds = 1.5f;
 
-        private const float RaceLaneOffsetMeters = 0.004f;
-        private const string HostCarResourcePath = "CarModels/RED";
-        private const string GuestCarResourcePath = "CarModels/GREEN";
+        private static readonly string[] PlayerCarResourcePaths =
+        {
+            "",
+            "CarModels/RED",
+            "CarModels/GREEN",
+            "CarModels/YELLOW",
+            "CarModels/BLUE"
+        };
+
+        private static readonly Color[] PlayerColors =
+        {
+            Color.white,
+            new Color(0.95f, 0.12f, 0.12f),
+            new Color(0.1f, 0.85f, 0.25f),
+            new Color(1f, 0.75f, 0.1f),
+            new Color(0.16f, 0.45f, 1f)
+        };
+
+        private static readonly float[] PlayerLaneOffsets =
+        {
+            0f,
+            -0.006f,
+            0.006f,
+            -0.014f,
+            0.014f
+        };
+
+        private byte GetLocalPlayerId()
+        {
+            if (_sharedState == null)
+            {
+                return 1;
+            }
+
+            byte localPlayerId = _sharedState.LocalPlayerId;
+            if (localPlayerId != 0)
+            {
+                return localPlayerId;
+            }
+
+            return _sharedState.IsServer ? (byte)1 : (byte)2;
+        }
+
+        private static bool IsValidPlayerId(byte playerId)
+        {
+            return playerId >= 1 && playerId <= SharedLobbyState.MaxPlayers;
+        }
+
+        private static string GetPlayerCarResourcePath(byte playerId)
+        {
+            return IsValidPlayerId(playerId) ? PlayerCarResourcePaths[playerId] : PlayerCarResourcePaths[1];
+        }
+
+        private static Color GetPlayerColor(byte playerId)
+        {
+            return IsValidPlayerId(playerId) ? PlayerColors[playerId] : PlayerColors[1];
+        }
+
+        private static float GetPlayerLaneOffset(byte playerId)
+        {
+            return IsValidPlayerId(playerId) ? PlayerLaneOffsets[playerId] : 0f;
+        }
 
         private void Awake()
         {
@@ -107,6 +173,7 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void Start()
         {
+            GameAudio.PlayMusic(GameMusic.Menu);
             InitializeRace();
 
 #if UNITY_EDITOR
@@ -899,13 +966,13 @@ namespace SlotCarRacingAR.Runtime.App
         {
             if (_arSetupUI != null)
             {
-                _arSetupUI.UpdateReadySync(hostReady, guestReady);
+                _arSetupUI.UpdateReadySync(_sharedState);
             }
 
-            if (hostReady && guestReady && !_countdownStarted)
+            if (_sharedState != null && _sharedState.AllReady && !_countdownStarted)
             {
                 _countdownStarted = true;
-                UnityEngine.Debug.Log("[Race] Both players ready — freezing track and starting countdown.");
+                UnityEngine.Debug.Log("[Race] All players ready - freezing track and starting countdown.");
 
                 // Freeze AR tracking updates (track position is locked)
                 FreezeTrack();
@@ -972,6 +1039,7 @@ namespace SlotCarRacingAR.Runtime.App
                     // Freeze track on guest side too
                     FreezeTrack();
                     _trackSizePanel?.SetAdjustmentsAvailable(false);
+                    GameAudio.StopLocalEngine();
                     break;
 
                 case RacePhase.Racing:
@@ -1000,15 +1068,22 @@ namespace SlotCarRacingAR.Runtime.App
 
             ConfigureRacePresenters();
             _raceActive = true;
+            _localPenaltyWasActive = false;
+            GameAudio.StopLocalEngine();
             _raceHud?.SetVisible(true);
             _podiumOverlay?.Hide();
             _trackSizePanel?.SetAdjustmentsAvailable(false);
+            GameAudio.PlayMusic(GameMusic.Race);
+            GameAudio.Play(GameSfx.RaceStart);
 
             if (_sharedState != null && _sharedState.IsServer)
             {
                 RefreshRaceTuningFromCar();
-                _hostRaceState.Reset();
-                _guestRaceState.Reset();
+                for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+                {
+                    _raceStates[playerId].Reset();
+                }
+
                 _raceElapsedSeconds = 0f;
                 UnityEngine.Debug.Log("[Race] Host authoritative race simulation started.");
             }
@@ -1019,14 +1094,18 @@ namespace SlotCarRacingAR.Runtime.App
         private void FinishRacePresentation()
         {
             _raceActive = false;
+            GameAudio.StopLocalEngine();
             if (_accelerationInputPlaceholder != null)
             {
                 _accelerationInputPlaceholder.gameObject.SetActive(false);
             }
 
             _raceHud?.SetVisible(false);
+            _localPenaltyWasActive = false;
             ApplyAuthoritativePresentation();
             _podiumOverlay?.Show(_sharedState);
+            GameAudio.PlayMusic(GameMusic.Menu);
+            GameAudio.Play(GameSfx.Finish);
             UnityEngine.Debug.Log("[Race] Race finished. Winner player=" + (_sharedState != null ? _sharedState.WinnerPlayerId.Value : 0));
         }
 
@@ -1055,7 +1134,11 @@ namespace SlotCarRacingAR.Runtime.App
             if (_sharedState != null && _sharedState.Phase.Value == RacePhase.Racing)
             {
                 _sharedState.SetLocalAccelerationHeld(isHeld);
+                GameAudio.SetLocalEngineAccelerating(isHeld);
+                return;
             }
+
+            GameAudio.StopLocalEngine();
         }
 
         private void ConfigureRacePresenters()
@@ -1065,28 +1148,29 @@ namespace SlotCarRacingAR.Runtime.App
                 return;
             }
 
-            bool localIsHost = _sharedState == null || _sharedState.IsServer;
-            Color hostColor = new Color(0.95f, 0.12f, 0.12f);
-            Color guestColor = new Color(0.1f, 0.85f, 0.25f);
-            string localCarResourcePath = localIsHost ? HostCarResourcePath : GuestCarResourcePath;
-            string remoteCarResourcePath = localIsHost ? GuestCarResourcePath : HostCarResourcePath;
+            byte localPlayerId = GetLocalPlayerId();
 
             RefreshRaceTuningFromCar();
 
-            _carPlaceholder.SetLaneOffset(localIsHost ? -RaceLaneOffsetMeters : RaceLaneOffsetMeters);
-            if (!_carPlaceholder.LoadVisualFromResource(localCarResourcePath))
+            _carPresenters[localPlayerId] = _carPlaceholder;
+            _carPlaceholder.SetLaneOffset(GetPlayerLaneOffset(localPlayerId));
+            if (!_carPlaceholder.LoadVisualFromResource(GetPlayerCarResourcePath(localPlayerId)))
             {
-                _carPlaceholder.SetVisualColor(localIsHost ? hostColor : guestColor);
+                _carPlaceholder.SetVisualColor(GetPlayerColor(localPlayerId));
             }
-            _carPlaceholder.SetPlayerMarker(localIsHost ? hostColor : guestColor, true);
+            _carPlaceholder.SetPlayerMarker(GetPlayerColor(localPlayerId), true);
 
             if (_sharedState != null)
             {
-                EnsureRemoteCarPresenter(
-                    localIsHost ? guestColor : hostColor,
-                    localIsHost ? RaceLaneOffsetMeters : -RaceLaneOffsetMeters,
-                    remoteCarResourcePath,
-                    _carPlaceholder.VisualRoot);
+                for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+                {
+                    if (playerId == localPlayerId || !_sharedState.HasPlayer(playerId))
+                    {
+                        continue;
+                    }
+
+                    EnsureRemoteCarPresenter(playerId, _carPlaceholder.VisualRoot);
+                }
             }
 
             _carPlaceholder.SetExternalRaceStateEnabled(_sharedState != null);
@@ -1096,25 +1180,28 @@ namespace SlotCarRacingAR.Runtime.App
             _racePresentersConfigured = true;
         }
 
-        private void EnsureRemoteCarPresenter(Color color, float laneOffset, string carResourcePath, Transform transformTemplate)
+        private void EnsureRemoteCarPresenter(byte playerId, Transform transformTemplate)
         {
-            if (_remoteCarPlaceholder != null || _carPlaceholder == null || _carPlaceholder.Track == null)
+            if (!IsValidPlayerId(playerId) || _carPresenters[playerId] != null || _carPlaceholder == null || _carPlaceholder.Track == null)
             {
                 return;
             }
 
-            GameObject remoteCarObject = new GameObject("RemoteCarPlaceholder");
+            GameObject remoteCarObject = new GameObject("RemoteCarPlaceholder_P" + playerId);
             remoteCarObject.transform.SetParent(_carPlaceholder.transform.parent, false);
             remoteCarObject.transform.localScale = _carPlaceholder.transform.localScale;
-            _remoteCarPlaceholder = remoteCarObject.AddComponent<CarPlaceholder>();
-            _remoteCarPlaceholder.SetLaneOffset(laneOffset);
-            if (!_remoteCarPlaceholder.LoadVisualFromResource(carResourcePath, transformTemplate))
+            CarPlaceholder presenter = remoteCarObject.AddComponent<CarPlaceholder>();
+            presenter.SetLaneOffset(GetPlayerLaneOffset(playerId));
+            presenter.SetRideHeightMeters(_carPlaceholder.RideHeightMeters);
+            if (!presenter.LoadVisualFromResource(GetPlayerCarResourcePath(playerId), transformTemplate))
             {
-                _remoteCarPlaceholder.SetVisualColor(color);
+                presenter.SetVisualColor(GetPlayerColor(playerId));
             }
 
-            _remoteCarPlaceholder.SetExternalRaceStateEnabled(true);
-            _remoteCarPlaceholder.BindTrack(_carPlaceholder.Track);
+            presenter.SetPlayerMarker(GetPlayerColor(playerId), false);
+            presenter.SetExternalRaceStateEnabled(true);
+            presenter.BindTrack(_carPlaceholder.Track);
+            _carPresenters[playerId] = presenter;
         }
 
         private void RefreshRaceTuningFromCar()
@@ -1140,18 +1227,46 @@ namespace SlotCarRacingAR.Runtime.App
             _raceElapsedSeconds += deltaTime;
 
             OvalTrackDefinition track = _carPlaceholder.Track;
-            StepRaceCar(_hostRaceState, _sharedState.HostAccelerationHeld.Value, track, deltaTime);
-            StepRaceCar(_guestRaceState, _sharedState.GuestAccelerationHeld.Value, track, deltaTime);
-            MarkFinishedIfNeeded(_hostRaceState, 1);
-            MarkFinishedIfNeeded(_guestRaceState, 2);
+            bool allActivePlayersFinished = true;
+            float[] finishTimes = new float[SharedLobbyState.MaxPlayers];
+            byte winnerPlayerId = 0;
+            float winningTime = float.MaxValue;
 
-            _sharedState.PublishRaceState(1, _hostRaceState.Progress, _hostRaceState.Speed, _hostRaceState.Lap, _hostRaceState.PenaltyRemainingSeconds > 0f);
-            _sharedState.PublishRaceState(2, _guestRaceState.Progress, _guestRaceState.Speed, _guestRaceState.Lap, _guestRaceState.PenaltyRemainingSeconds > 0f);
-
-            if (_hostRaceState.Finished && _guestRaceState.Finished)
+            for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
             {
-                byte winner = _hostRaceState.FinishTimeSeconds <= _guestRaceState.FinishTimeSeconds ? (byte)1 : (byte)2;
-                _sharedState.FinishRace(winner, _hostRaceState.FinishTimeSeconds, _guestRaceState.FinishTimeSeconds);
+                RaceCarRuntimeState state = _raceStates[playerId];
+                if (!_sharedState.HasPlayer(playerId))
+                {
+                    state.Reset();
+                    finishTimes[playerId - 1] = -1f;
+                    continue;
+                }
+
+                StepRaceCar(state, _sharedState.GetAccelerationHeld(playerId), track, deltaTime);
+                MarkFinishedIfNeeded(state, playerId);
+                _sharedState.PublishRaceState(
+                    playerId,
+                    state.Progress,
+                    state.Speed,
+                    state.Lap,
+                    state.PenaltyRemainingSeconds > 0f);
+                if (state.Finished)
+                {
+                    _sharedState.PublishFinishTime(playerId, state.FinishTimeSeconds);
+                }
+
+                finishTimes[playerId - 1] = state.FinishTimeSeconds;
+                allActivePlayersFinished &= state.Finished;
+                if (state.Finished && state.FinishTimeSeconds < winningTime)
+                {
+                    winningTime = state.FinishTimeSeconds;
+                    winnerPlayerId = playerId;
+                }
+            }
+
+            if (allActivePlayersFinished && winnerPlayerId != 0)
+            {
+                _sharedState.FinishRace(winnerPlayerId, finishTimes);
             }
         }
 
@@ -1231,25 +1346,85 @@ namespace SlotCarRacingAR.Runtime.App
 
             ConfigureRacePresenters();
 
-            bool localIsHost = _sharedState.IsServer;
-            _carPlaceholder.ApplyAuthoritativeState(
-                localIsHost ? _sharedState.HostProgress.Value : _sharedState.GuestProgress.Value,
-                localIsHost ? _sharedState.HostSpeed.Value : _sharedState.GuestSpeed.Value,
-                localIsHost ? _sharedState.HostLap.Value : _sharedState.GuestLap.Value,
-                localIsHost ? _sharedState.HostPenaltyActive.Value : _sharedState.GuestPenaltyActive.Value);
+            byte localPlayerId = GetLocalPlayerId();
+            bool localFinished = _sharedState.GetFinishTime(localPlayerId) >= 0f;
+            UpdateLocalInputAfterFinish(localFinished);
 
-            if (_remoteCarPlaceholder != null)
+            bool localPenaltyActive = _sharedState.GetPenaltyActive(localPlayerId);
+            _carPlaceholder.ApplyAuthoritativeState(
+                _sharedState.GetProgress(localPlayerId),
+                _sharedState.GetSpeed(localPlayerId),
+                _sharedState.GetLap(localPlayerId),
+                localPenaltyActive);
+
+            if (localPenaltyActive && !_localPenaltyWasActive)
             {
-                _remoteCarPlaceholder.ApplyAuthoritativeState(
-                    localIsHost ? _sharedState.GuestProgress.Value : _sharedState.HostProgress.Value,
-                    localIsHost ? _sharedState.GuestSpeed.Value : _sharedState.HostSpeed.Value,
-                    localIsHost ? _sharedState.GuestLap.Value : _sharedState.HostLap.Value,
-                    localIsHost ? _sharedState.GuestPenaltyActive.Value : _sharedState.HostPenaltyActive.Value);
+                GameAudio.Play(GameSfx.Penalty);
+            }
+
+            _localPenaltyWasActive = localPenaltyActive;
+
+            for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+            {
+                if (playerId == localPlayerId)
+                {
+                    continue;
+                }
+
+                CarPlaceholder presenter = _carPresenters[playerId];
+                if (presenter == null)
+                {
+                    continue;
+                }
+
+                bool hasPlayer = _sharedState.HasPlayer(playerId);
+                presenter.gameObject.SetActive(hasPlayer);
+                if (!hasPlayer)
+                {
+                    continue;
+                }
+
+                presenter.ApplyAuthoritativeState(
+                    _sharedState.GetProgress(playerId),
+                    _sharedState.GetSpeed(playerId),
+                    _sharedState.GetLap(playerId),
+                    _sharedState.GetPenaltyActive(playerId));
+            }
+        }
+
+        private void UpdateLocalInputAfterFinish(bool localFinished)
+        {
+            if (_accelerationInputPlaceholder == null || _sharedState == null || _sharedState.Phase.Value != RacePhase.Racing)
+            {
+                return;
+            }
+
+            if (localFinished)
+            {
+                if (_sharedState.GetAccelerationHeld(GetLocalPlayerId()))
+                {
+                    _sharedState.SetLocalAccelerationHeld(false);
+                }
+
+                GameAudio.StopLocalEngine();
+                if (_accelerationInputPlaceholder.gameObject.activeSelf)
+                {
+                    _accelerationInputPlaceholder.gameObject.SetActive(false);
+                }
+
+                return;
+            }
+
+            if (!_accelerationInputPlaceholder.gameObject.activeSelf)
+            {
+                _accelerationInputPlaceholder.gameObject.SetActive(true);
             }
         }
 
         private void OnDestroy()
         {
+            GameAudio.StopLocalEngine();
+
             if (_accelerationInputPlaceholder != null)
             {
                 _accelerationInputPlaceholder.OnHoldChanged -= HandleAccelerationHeldChanged;

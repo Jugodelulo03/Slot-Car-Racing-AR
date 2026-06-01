@@ -55,6 +55,12 @@ namespace SlotCarRacingAR.Runtime.Features
         [Tooltip("How far the car slides off-track before returning (meters).")]
         [SerializeField] private float _spinOutSlideDistance = 0.03f;
 
+        [Header("Track Contact")]
+        [Tooltip("Vertical offset from the racing line. Negative values sink the car slightly when waypoints sit on top of the track mesh.")]
+        [SerializeField] private float _rideHeightMeters = -0.012f;
+        [Tooltip("Moves the loaded car mesh so its visual bottom sits on the racing line before applying ride height.")]
+        [SerializeField] private bool _groundVisualToRacingLine = true;
+
         // Runtime state
         private OvalTrackDefinition _track;
         private float _currentSpeed;
@@ -98,6 +104,7 @@ namespace SlotCarRacingAR.Runtime.Features
         public float AccelerationRate => _accelerationRate;
         public float BrakeRate => _brakeRate;
         public float SpinOutDuration => _spinOutDuration;
+        public float RideHeightMeters => _rideHeightMeters;
         public CurveDifficulty CurrentDifficulty => _track != null ? _track.GetDifficultyAtProgress(_trackProgress) : CurveDifficulty.Straight;
         public float CurrentSafeSpeed => GetSafeSpeed(CurrentDifficulty);
         public float CurveSpeedLimit => CurrentSafeSpeed; // backward compat
@@ -164,6 +171,12 @@ namespace SlotCarRacingAR.Runtime.Features
             UpdateCarTransform();
         }
 
+        public void SetRideHeightMeters(float rideHeightMeters)
+        {
+            _rideHeightMeters = Mathf.Clamp(rideHeightMeters, -0.08f, 0.03f);
+            UpdateCarTransform();
+        }
+
         public void SetVisualColor(Color color)
         {
             _visualColor = color;
@@ -226,6 +239,7 @@ namespace SlotCarRacingAR.Runtime.Features
                 Destroy(collider);
             }
 
+            GroundVisualToRacingLine();
             ApplyVisualColor();
             UnityEngine.Debug.Log($"[Car] Loaded Resources car visual '{resourcePath}'.");
             return true;
@@ -250,6 +264,7 @@ namespace SlotCarRacingAR.Runtime.Features
                 Destroy(collider);
             }
 
+            GroundVisualToRacingLine();
             return ApplyPaletteColor(paletteColor);
         }
 
@@ -460,11 +475,12 @@ namespace SlotCarRacingAR.Runtime.Features
 
             Vector3 pos = GetLanePosition(_trackProgress);
             Vector3 fwd = _track.GetForwardAtProgress(_trackProgress);
+            Vector3 up = GetTrackUp(fwd);
 
             transform.localPosition = pos;
             if (fwd.sqrMagnitude > 0.001f)
             {
-                transform.localRotation = Quaternion.LookRotation(fwd, Vector3.up);
+                transform.localRotation = Quaternion.LookRotation(fwd, up);
             }
         }
 
@@ -472,12 +488,14 @@ namespace SlotCarRacingAR.Runtime.Features
         {
             Vector3 pos = _track.GetPositionAtProgress(progress);
             Vector3 fwd = _track.GetForwardAtProgress(progress);
-            Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+            Vector3 up = GetTrackUp(fwd);
+            Vector3 right = Vector3.Cross(up, fwd).normalized;
             if (right.sqrMagnitude > 0.001f)
             {
                 pos += right * _laneOffsetMeters;
             }
 
+            pos += up * _rideHeightMeters;
             return pos;
         }
 
@@ -486,9 +504,21 @@ namespace SlotCarRacingAR.Runtime.Features
             Vector3 fwd = _track.GetForwardAtProgress(_trackProgress);
             if (fwd.sqrMagnitude > 0.001f)
             {
+                Vector3 up = GetTrackUp(fwd);
                 float yaw = Mathf.Sin(Time.time * 18f) * 35f;
-                transform.localRotation = Quaternion.LookRotation(fwd, Vector3.up) * Quaternion.Euler(0f, yaw, 0f);
+                transform.localRotation = Quaternion.LookRotation(fwd, up) * Quaternion.Euler(0f, yaw, 0f);
             }
+        }
+
+        private static Vector3 GetTrackUp(Vector3 forward)
+        {
+            if (forward.sqrMagnitude < 0.001f)
+            {
+                return Vector3.up;
+            }
+
+            Vector3 up = Vector3.ProjectOnPlane(Vector3.up, forward.normalized).normalized;
+            return up.sqrMagnitude > 0.001f ? up : Vector3.up;
         }
 
         private void EnsureVisual()
@@ -504,6 +534,7 @@ namespace SlotCarRacingAR.Runtime.Features
                         Destroy(child.gameObject);
                 }
                 _sceneCarModel.gameObject.SetActive(true);
+                GroundVisualToRacingLine();
                 ApplyVisualColor();
                 if (_playerMarkerVisible)
                 {
@@ -741,6 +772,44 @@ namespace SlotCarRacingAR.Runtime.Features
         {
             bounds = default;
             bool initialized = false;
+
+            MeshFilter[] meshFilters = GetComponentsInChildren<MeshFilter>(true);
+            for (int meshIndex = 0; meshIndex < meshFilters.Length; meshIndex++)
+            {
+                MeshFilter meshFilter = meshFilters[meshIndex];
+                if (meshFilter == null || meshFilter.sharedMesh == null || IsPlayerMarkerTransform(meshFilter.transform))
+                {
+                    continue;
+                }
+
+                Matrix4x4 meshToCarLocal = transform.worldToLocalMatrix * meshFilter.transform.localToWorldMatrix;
+                Bounds meshBounds = meshFilter.sharedMesh.bounds;
+                Vector3 center = meshBounds.center;
+                Vector3 extents = meshBounds.extents;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 meshPoint = center + new Vector3(
+                        (corner & 1) == 0 ? -extents.x : extents.x,
+                        (corner & 2) == 0 ? -extents.y : extents.y,
+                        (corner & 4) == 0 ? -extents.z : extents.z);
+                    Vector3 localPoint = meshToCarLocal.MultiplyPoint3x4(meshPoint);
+                    if (!initialized)
+                    {
+                        bounds = new Bounds(localPoint, Vector3.zero);
+                        initialized = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(localPoint);
+                    }
+                }
+            }
+
+            if (initialized)
+            {
+                return true;
+            }
+
             Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
             for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
             {
@@ -775,9 +844,37 @@ namespace SlotCarRacingAR.Runtime.Features
             return initialized;
         }
 
+        private void GroundVisualToRacingLine()
+        {
+            if (!_groundVisualToRacingLine || _sceneCarModel == null)
+            {
+                return;
+            }
+
+            if (!TryGetVisualLocalBounds(out Bounds bounds))
+            {
+                return;
+            }
+
+            if (Mathf.Abs(bounds.min.y) < 0.0001f)
+            {
+                return;
+            }
+
+            Vector3 localPosition = _sceneCarModel.localPosition;
+            localPosition.y -= bounds.min.y;
+            _sceneCarModel.localPosition = localPosition;
+            UnityEngine.Debug.Log($"[Car] Grounded visual to racing line. BoundsMinY={bounds.min.y:F4}");
+        }
+
         private bool IsPlayerMarkerRenderer(Renderer renderer)
         {
-            return _playerMarker != null && renderer.transform.IsChildOf(_playerMarker.transform);
+            return renderer != null && IsPlayerMarkerTransform(renderer.transform);
+        }
+
+        private bool IsPlayerMarkerTransform(Transform candidate)
+        {
+            return _playerMarker != null && candidate != null && candidate.IsChildOf(_playerMarker.transform);
         }
 
         private static Mesh CreatePyramidMesh()

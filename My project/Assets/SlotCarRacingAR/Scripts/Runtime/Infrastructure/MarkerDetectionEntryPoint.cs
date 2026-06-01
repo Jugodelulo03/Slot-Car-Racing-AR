@@ -48,6 +48,10 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         [Tooltip("Vertical offset in meters above the anchor plane.")]
         [SerializeField] [Range(-0.05f, 0.10f)] private float _heightOffsetMeters = 0.015f;
 
+        [Header("Car Contact")]
+        [Tooltip("Vertical offset for the car only, relative to the racing line. Use this when the car floats above the track.")]
+        [SerializeField] [Range(-0.08f, 0.03f)] private float _carRideHeightMeters = -0.012f;
+
         private ARAnchorManager _anchorManager;
         private TrackPlaceholder _trackPlaceholder;
         private CarPlaceholder _carPlaceholder;
@@ -56,6 +60,10 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         // Original parents so we can un-parent on reset
         private Transform _originalTrackParent;
         private Transform _originalCarParent;
+        private Transform _originalSceneSetupParent;
+        private Vector3 _originalSceneSetupLocalPosition;
+        private Quaternion _originalSceneSetupLocalRotation;
+        private Vector3 _originalSceneSetupLocalScale;
 
         // Oval track
         private OvalTrackDefinition _ovalTrack;
@@ -85,6 +93,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         public float TrackWidthMeters => _trackScale * OvalTrackDefinition.DesignBoundingWidth;
         public float TrackLengthMeters => _trackScale * OvalTrackDefinition.DesignBoundingHeight;
         public float HeightOffsetMeters => _heightOffsetMeters;
+        public float CarRideHeightMeters => _carRideHeightMeters;
         public string AnchorStatus { get; private set; } = "waiting";
 
         /// <summary>Fired once when the marker is first detected and track is anchored.</summary>
@@ -116,6 +125,8 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         private void Awake()
         {
             _trackScale = NormalizeInitialTrackScale(_trackScale);
+            CacheSceneSetupInitialTransform();
+            HideSceneTrackSetupsExcept(null);
         }
 
         private void OnValidate()
@@ -189,6 +200,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                     {
                         float scaleFactor = _trackScale / _sceneSetupNativeMaxExtent;
                         _carPlaceholder.ApplyTrackScaleFactor(scaleFactor);
+                        _carPlaceholder.SetRideHeightMeters(_carRideHeightMeters);
                         if (_ovalTrack != null)
                             _carPlaceholder.BindTrack(_ovalTrack);
                     }
@@ -218,8 +230,21 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                     else
                         _ovalTrack = new OvalTrackDefinition(scaleX, scaleZ, height);
                     if (_trackVisualBuilder != null) _trackVisualBuilder.Rebuild(_ovalTrack);
-                    if (_carPlaceholder != null) _carPlaceholder.BindTrack(_ovalTrack);
+                    if (_carPlaceholder != null)
+                    {
+                        _carPlaceholder.SetRideHeightMeters(_carRideHeightMeters);
+                        _carPlaceholder.BindTrack(_ovalTrack);
+                    }
                 }
+            }
+        }
+
+        public void SetCarRideHeight(float rideHeightMeters)
+        {
+            _carRideHeightMeters = Mathf.Clamp(rideHeightMeters, -0.08f, 0.03f);
+            if (_carPlaceholder != null)
+            {
+                _carPlaceholder.SetRideHeightMeters(_carRideHeightMeters);
             }
         }
 
@@ -228,6 +253,9 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         /// </summary>
         public void ResetAnchor()
         {
+            RestoreSceneSetupToInitialTransform();
+            HideSceneTrackSetupsExcept(null);
+
             // Un-parent track placeholder back to its original parent
             if (_trackPlaceholder != null)
             {
@@ -541,6 +569,8 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         /// </summary>
         private void BuildFromSceneSetup()
         {
+            HideSceneTrackSetupsExcept(_trackSceneSetup);
+
             Transform trackRoot = _trackSceneSetup.transform;
 
             // Parent under anchor at native scale to measure bounds
@@ -589,6 +619,68 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
 
             UnityEngine.Debug.Log($"[MarkerDetection] SceneSetup applied: scaleFactor={scaleFactor:F6}, " +
                                   $"localScale={trackRoot.localScale:F6}, localPos={trackRoot.localPosition:F4}");
+        }
+
+        private void CacheSceneSetupInitialTransform()
+        {
+            if (_trackSceneSetup == null)
+            {
+                return;
+            }
+
+            Transform trackRoot = _trackSceneSetup.transform;
+            _originalSceneSetupParent = trackRoot.parent;
+            _originalSceneSetupLocalPosition = trackRoot.localPosition;
+            _originalSceneSetupLocalRotation = trackRoot.localRotation;
+            _originalSceneSetupLocalScale = trackRoot.localScale;
+        }
+
+        private void RestoreSceneSetupToInitialTransform()
+        {
+            if (_trackSceneSetup == null)
+            {
+                return;
+            }
+
+            Transform trackRoot = _trackSceneSetup.transform;
+            trackRoot.SetParent(_originalSceneSetupParent, false);
+            trackRoot.localPosition = _originalSceneSetupLocalPosition;
+            trackRoot.localRotation = _originalSceneSetupLocalRotation;
+            trackRoot.localScale = _originalSceneSetupLocalScale;
+        }
+
+        private void HideSceneTrackSetupsExcept(TrackSceneSetup setupToShow)
+        {
+            TrackSceneSetup[] sceneSetups = FindObjectsByType<TrackSceneSetup>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+
+            for (int i = 0; i < sceneSetups.Length; i++)
+            {
+                TrackSceneSetup setup = sceneSetups[i];
+                if (setup == null || HasAncestorTrackSceneSetup(setup))
+                {
+                    continue;
+                }
+
+                setup.gameObject.SetActive(setup == setupToShow);
+            }
+        }
+
+        private static bool HasAncestorTrackSceneSetup(TrackSceneSetup setup)
+        {
+            Transform parent = setup.transform.parent;
+            while (parent != null)
+            {
+                if (parent.GetComponent<TrackSceneSetup>() != null)
+                {
+                    return true;
+                }
+
+                parent = parent.parent;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -664,6 +756,8 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                 _carPlaceholder.ApplyTrackScaleFactor(scaleFactor);
             }
 
+            _carPlaceholder.SetRideHeightMeters(_carRideHeightMeters);
+
             if (_ovalTrack != null)
             {
                 _carPlaceholder.BindTrack(_ovalTrack);
@@ -688,6 +782,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                 {
                     float scaleFactor = _trackScale / _sceneSetupNativeMaxExtent;
                     _carPlaceholder.ApplyTrackScaleFactor(scaleFactor);
+                    _carPlaceholder.SetRideHeightMeters(_carRideHeightMeters);
                     if (_ovalTrack != null)
                         _carPlaceholder.BindTrack(_ovalTrack);
                 }
@@ -723,6 +818,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
                 }
                 if (_carPlaceholder != null)
                 {
+                    _carPlaceholder.SetRideHeightMeters(_carRideHeightMeters);
                     _carPlaceholder.BindTrack(_ovalTrack);
                 }
             }

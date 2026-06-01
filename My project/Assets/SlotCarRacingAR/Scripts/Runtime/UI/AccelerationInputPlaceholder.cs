@@ -29,8 +29,8 @@ namespace SlotCarRacingAR.Runtime.UI
                 rectTransform.anchorMin = new Vector2(1f, 0f);
                 rectTransform.anchorMax = new Vector2(1f, 0f);
                 rectTransform.pivot = new Vector2(1f, 0f);
-                rectTransform.anchoredPosition = new Vector2(-42f, 42f);
-                rectTransform.sizeDelta = new Vector2(220f, 220f);
+                rectTransform.anchoredPosition = new Vector2(-48f, 48f);
+                rectTransform.sizeDelta = new Vector2(260f, 260f);
             }
 
             if (!TryGetComponent<Image>(out Image image))
@@ -129,13 +129,13 @@ namespace SlotCarRacingAR.Runtime.UI
                 "ACELERAR",
                 new Vector2(0.10f, 0.22f),
                 new Vector2(0.90f, 0.78f),
-                28,
+                31,
                 RetroUi.Yellow,
                 TextAnchor.MiddleCenter,
                 FontStyle.BoldAndItalic);
             _label.resizeTextForBestFit = true;
-            _label.resizeTextMinSize = 16;
-            _label.resizeTextMaxSize = 28;
+            _label.resizeTextMinSize = 18;
+            _label.resizeTextMaxSize = 31;
         }
 
         /// <summary>

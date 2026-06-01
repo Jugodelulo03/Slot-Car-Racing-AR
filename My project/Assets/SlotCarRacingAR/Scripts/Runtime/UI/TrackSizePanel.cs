@@ -112,8 +112,8 @@ namespace SlotCarRacingAR.Runtime.UI
             RectTransform panel = RetroUi.CreatePanel(
                 canvasObj.transform,
                 "TrackSizePanel",
-                new Vector2(0.84f, 0.36f),
-                new Vector2(0.985f, 0.86f),
+                new Vector2(0.855f, 0.14f),
+                new Vector2(0.985f, 0.64f),
                 RetroUi.WithAlpha(RetroUi.TealDark, 0.92f),
                 true);
 
@@ -123,7 +123,7 @@ namespace SlotCarRacingAR.Runtime.UI
                 "AJUSTE DE PISTA",
                 new Vector2(0.06f, 0.86f),
                 new Vector2(0.94f, 0.98f),
-                16,
+                17,
                 RetroUi.White,
                 TextAnchor.MiddleCenter,
                 FontStyle.BoldAndItalic);
@@ -134,13 +134,13 @@ namespace SlotCarRacingAR.Runtime.UI
                 "Escala",
                 new Vector2(0.02f, 0.04f),
                 new Vector2(0.48f, 0.22f),
-                13,
+                17,
                 RetroUi.Yellow,
                 TextAnchor.MiddleCenter,
                 FontStyle.BoldAndItalic);
             _scaleLabel.resizeTextForBestFit = true;
-            _scaleLabel.resizeTextMinSize = 9;
-            _scaleLabel.resizeTextMaxSize = 13;
+            _scaleLabel.resizeTextMinSize = 12;
+            _scaleLabel.resizeTextMaxSize = 17;
 
             _scaleSlider = CreateRetroSlider(
                 panel,
@@ -159,13 +159,13 @@ namespace SlotCarRacingAR.Runtime.UI
                 "Altura",
                 new Vector2(0.52f, 0.04f),
                 new Vector2(0.98f, 0.22f),
-                13,
+                17,
                 RetroUi.Yellow,
                 TextAnchor.MiddleCenter,
                 FontStyle.BoldAndItalic);
             _heightLabel.resizeTextForBestFit = true;
-            _heightLabel.resizeTextMinSize = 9;
-            _heightLabel.resizeTextMaxSize = 13;
+            _heightLabel.resizeTextMinSize = 12;
+            _heightLabel.resizeTextMaxSize = 17;
 
             _heightSlider = CreateRetroSlider(
                 panel,

@@ -80,6 +80,28 @@ namespace SlotCarRacingAR.Runtime.UI
                 RetroUi.White,
                 38);
             _joinMatchButton.onClick.AddListener(HandleJoinMatch);
+
+            RectTransform quickGuide = RetroUi.CreatePanel(
+                root,
+                "QuickStartGuide",
+                new Vector2(0.12f, 0.02f),
+                new Vector2(0.88f, 0.10f),
+                RetroUi.WithAlpha(RetroUi.TealDark, 0.92f),
+                false);
+
+            Text quickStartText = RetroUi.CreateText(
+                quickGuide,
+                "QuickStartText",
+                "1 HOST CREA PARTIDA   |   2 INVITADO SE UNE EN LA MISMA RED   |   3 AMBOS APUNTAN AL MARCADOR",
+                Vector2.zero,
+                Vector2.one,
+                22,
+                RetroUi.Yellow,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+            quickStartText.resizeTextForBestFit = true;
+            quickStartText.resizeTextMinSize = 14;
+            quickStartText.resizeTextMaxSize = 22;
         }
 
         private void HandleCreateMatch()

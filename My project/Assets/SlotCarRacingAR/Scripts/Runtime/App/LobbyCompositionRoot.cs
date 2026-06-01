@@ -31,6 +31,7 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void Awake()
         {
+            GameAudio.PlayMusic(GameMusic.Menu);
             EnsureInputSystemUiModule();
             CreateSessionManager();
             CreateLanDiscovery();
@@ -306,7 +307,15 @@ namespace SlotCarRacingAR.Runtime.App
             byte playerCount = _sharedLobbyState != null
                 ? _sharedLobbyState.PlayerCount.Value
                 : (byte)(networkManager.IsServer ? networkManager.ConnectedClientsIds.Count : 2);
-            _sharedLobbyUI.UpdatePlayerCount(playerCount, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            if (_sharedLobbyState != null)
+            {
+                _sharedLobbyUI.UpdatePlayerSlots(_sharedLobbyState, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            }
+            else
+            {
+                _sharedLobbyUI.UpdatePlayerCount(playerCount, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            }
+
             if (playerCount >= 2)
             {
                 _sharedLobbyUI.ShowConnectionConfirmation();
@@ -396,7 +405,11 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void EnterSharedLobby()
         {
-            _lanDiscovery.StopAll();
+            if (_sessionManager.Role == PlayerRole.Guest)
+            {
+                _lanDiscovery.StopAll();
+            }
+
             ShowSharedLobbyUI();
             RegisterLobbyStatePrefab();
 
@@ -477,7 +490,7 @@ namespace SlotCarRacingAR.Runtime.App
             _sharedLobbyState.OnPlayerCountChanged += OnLobbyPlayerCountChanged;
 
             // Initial UI update
-            _sharedLobbyUI.UpdatePlayerCount(_sharedLobbyState.PlayerCount.Value, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
+            _sharedLobbyUI.UpdatePlayerSlots(_sharedLobbyState, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
             if (_sharedLobbyState.PlayerCount.Value >= 2)
             {
                 _sharedLobbyUI.ShowConnectionConfirmation();
@@ -491,7 +504,7 @@ namespace SlotCarRacingAR.Runtime.App
             {
                 _sharedLobbyState = found;
                 _sharedLobbyState.OnPlayerCountChanged += OnLobbyPlayerCountChanged;
-                _sharedLobbyUI.UpdatePlayerCount(_sharedLobbyState.PlayerCount.Value, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
+                _sharedLobbyUI.UpdatePlayerSlots(_sharedLobbyState, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
                 if (_sharedLobbyState.PlayerCount.Value >= 2)
                 {
                     _sharedLobbyUI.ShowConnectionConfirmation();
@@ -516,7 +529,7 @@ namespace SlotCarRacingAR.Runtime.App
             if (_sharedLobbyState == null) return;
             byte count = _sharedLobbyState.PlayerCount.Value;
             UnityEngine.Debug.Log("[Lobby] Recheck PlayerCount=" + count + " attempt=" + _recheckAttempts);
-            _sharedLobbyUI.UpdatePlayerCount(count, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
+            _sharedLobbyUI.UpdatePlayerSlots(_sharedLobbyState, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
             if (count >= 2)
             {
                 _sharedLobbyUI.ShowConnectionConfirmation();
@@ -535,9 +548,16 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void OnLobbyPlayerCountChanged(byte oldCount, byte newCount)
         {
-            _sharedLobbyUI.UpdatePlayerCount(newCount, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            if (_sharedLobbyState != null)
+            {
+                _sharedLobbyUI.UpdatePlayerSlots(_sharedLobbyState, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            }
+            else
+            {
+                _sharedLobbyUI.UpdatePlayerCount(newCount, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            }
 
-            if (oldCount < 2 && newCount >= 2)
+            if (newCount > oldCount && newCount >= 2)
             {
                 _sharedLobbyUI.ShowConnectionConfirmation();
             }
@@ -632,6 +652,7 @@ namespace SlotCarRacingAR.Runtime.App
         /// </summary>
         public void TransitionToRace()
         {
+            _lanDiscovery.StopAll();
             RequestCameraPermissionAndTransition();
         }
 

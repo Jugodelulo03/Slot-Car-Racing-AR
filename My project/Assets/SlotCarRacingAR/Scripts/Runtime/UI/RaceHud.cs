@@ -16,7 +16,10 @@ namespace SlotCarRacingAR.Runtime.UI
         private Text _lapText;
         private Text _positionText;
         private Image _positionBackground;
+        private GameObject _finishNoticePanel;
+        private Text _finishNoticeText;
         private bool _visible;
+        private float _lastObservedLocalFinishTime = -1f;
 
         private void Start()
         {
@@ -40,6 +43,15 @@ namespace SlotCarRacingAR.Runtime.UI
             {
                 _root.SetActive(visible);
             }
+
+            if (!visible)
+            {
+                _lastObservedLocalFinishTime = -1f;
+                if (_finishNoticePanel != null)
+                {
+                    _finishNoticePanel.SetActive(false);
+                }
+            }
         }
 
         public void SetMaxSpeed(float maxSpeedMetersPerSecond)
@@ -57,45 +69,52 @@ namespace SlotCarRacingAR.Runtime.UI
             {
                 _lapText.text = "VUELTA\n1/" + SharedLobbyState.RaceLapTarget;
                 SetPositionDisplay(1);
+                UpdateFinishNotice(-1f, 0);
                 return;
             }
 
-            bool localIsHost = _sharedState.IsServer;
-            float localProgress = localIsHost ? _sharedState.HostProgress.Value : _sharedState.GuestProgress.Value;
-            float rivalProgress = localIsHost ? _sharedState.GuestProgress.Value : _sharedState.HostProgress.Value;
-            byte localLap = localIsHost ? _sharedState.HostLap.Value : _sharedState.GuestLap.Value;
-            byte rivalLap = localIsHost ? _sharedState.GuestLap.Value : _sharedState.HostLap.Value;
+            byte localPlayerId = _sharedState.LocalPlayerId;
+            if (localPlayerId == 0)
+            {
+                localPlayerId = _sharedState.IsServer ? (byte)1 : (byte)2;
+            }
 
+            byte localLap = _sharedState.GetLap(localPlayerId);
             int displayLap = Mathf.Clamp(localLap + 1, 1, SharedLobbyState.RaceLapTarget);
-            int position = ResolveLocalPosition(localIsHost, localLap, localProgress, rivalLap, rivalProgress);
+            int position = _sharedState.GetRacePosition(localPlayerId);
 
             _lapText.text = "VUELTA\n" + displayLap + "/" + SharedLobbyState.RaceLapTarget;
             SetPositionDisplay(position);
+            UpdateFinishNotice(_sharedState.GetFinishTime(localPlayerId), _sharedState.GetFinishRank(localPlayerId));
         }
 
-        private int ResolveLocalPosition(bool localIsHost, byte localLap, float localProgress, byte rivalLap, float rivalProgress)
+        private void UpdateFinishNotice(float localFinishTime, int rank)
         {
-            float localFinishTime = localIsHost ? _sharedState.HostFinishTimeSeconds.Value : _sharedState.GuestFinishTimeSeconds.Value;
-            float rivalFinishTime = localIsHost ? _sharedState.GuestFinishTimeSeconds.Value : _sharedState.HostFinishTimeSeconds.Value;
-            bool localFinished = localFinishTime >= 0f;
-            bool rivalFinished = rivalFinishTime >= 0f;
-
-            if (localFinished && rivalFinished)
+            if (localFinishTime >= 0f)
             {
-                return localFinishTime <= rivalFinishTime ? 1 : 2;
+                ShowFinishNotice(rank, localFinishTime, _lastObservedLocalFinishTime < 0f);
+            }
+            else if (_finishNoticePanel != null)
+            {
+                _finishNoticePanel.SetActive(false);
             }
 
-            if (localFinished)
+            _lastObservedLocalFinishTime = localFinishTime;
+        }
+
+        private void ShowFinishNotice(int rank, float finishTimeSeconds, bool playSfx)
+        {
+            if (_finishNoticePanel == null || _finishNoticeText == null)
             {
-                return 1;
+                return;
             }
 
-            if (rivalFinished)
+            _finishNoticeText.text = FormatOrdinal(Mathf.Max(1, rank)) + "\n" + FormatTime(finishTimeSeconds);
+            _finishNoticePanel.SetActive(true);
+            if (playSfx)
             {
-                return 2;
+                GameAudio.Play(GameSfx.Ready);
             }
-
-            return localLap + localProgress >= rivalLap + rivalProgress ? 1 : 2;
         }
 
         private void SetPositionDisplay(int position)
@@ -139,6 +158,18 @@ namespace SlotCarRacingAR.Runtime.UI
                 default:
                     return RetroUi.TealDark;
             }
+        }
+
+        private static string FormatTime(float seconds)
+        {
+            if (seconds < 0f)
+            {
+                return "--:--";
+            }
+
+            int minutes = Mathf.FloorToInt(seconds / 60f);
+            float remainder = seconds - minutes * 60f;
+            return minutes.ToString("00") + ":" + remainder.ToString("00.00");
         }
 
         private void CreateHud()
@@ -209,6 +240,28 @@ namespace SlotCarRacingAR.Runtime.UI
             _positionText.resizeTextMinSize = 54;
             _positionText.resizeTextMaxSize = 100;
 
+            _finishNoticePanel = RetroUi.CreatePanel(
+                _root.transform,
+                "FinishNoticePanel",
+                new Vector2(0.24f, 0.35f),
+                new Vector2(0.76f, 0.66f),
+                RetroUi.WithAlpha(RetroUi.TealDark, 0.94f),
+                false).gameObject;
+
+            _finishNoticeText = RetroUi.CreateText(
+                _finishNoticePanel.transform,
+                "FinishNoticeText",
+                "LLEGASTE",
+                Vector2.zero,
+                Vector2.one,
+                58,
+                RetroUi.Cream,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+            _finishNoticeText.resizeTextForBestFit = true;
+            _finishNoticeText.resizeTextMinSize = 42;
+            _finishNoticeText.resizeTextMaxSize = 70;
+            _finishNoticePanel.SetActive(false);
         }
 
         private void OnDestroy()

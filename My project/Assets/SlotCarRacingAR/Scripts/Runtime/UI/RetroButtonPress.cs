@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using SlotCarRacingAR.Runtime.Infrastructure;
 
 namespace SlotCarRacingAR.Runtime.UI
 {
@@ -22,6 +23,7 @@ namespace SlotCarRacingAR.Runtime.UI
 
         public void OnPointerDown(PointerEventData eventData)
         {
+            GameAudio.Play(GameSfx.UiClick);
             SetPressed(true);
         }
 

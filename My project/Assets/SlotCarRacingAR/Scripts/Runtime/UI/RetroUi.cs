@@ -397,7 +397,7 @@ namespace SlotCarRacingAR.Runtime.UI
             {
                 if (_circleSprite == null)
                 {
-                    _circleSprite = CreateCircleSprite(64);
+                    _circleSprite = CreateCircleSprite(256);
                 }
 
                 return _circleSprite;
@@ -454,7 +454,7 @@ namespace SlotCarRacingAR.Runtime.UI
             texture.wrapMode = TextureWrapMode.Clamp;
             texture.filterMode = FilterMode.Bilinear;
             float center = (size - 1f) * 0.5f;
-            float radius = center - 1f;
+            float radius = center - 1.5f;
             Color clear = new Color(1f, 1f, 1f, 0f);
 
             for (int y = 0; y < size; y++)
@@ -463,7 +463,9 @@ namespace SlotCarRacingAR.Runtime.UI
                 {
                     float dx = x - center;
                     float dy = y - center;
-                    texture.SetPixel(x, y, dx * dx + dy * dy <= radius * radius ? Color.white : clear);
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                    float alpha = Mathf.Clamp01(radius + 0.75f - distance);
+                    texture.SetPixel(x, y, alpha > 0f ? new Color(1f, 1f, 1f, alpha) : clear);
                 }
             }
 
