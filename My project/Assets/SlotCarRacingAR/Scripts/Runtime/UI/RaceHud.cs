@@ -1,23 +1,22 @@
 using SlotCarRacingAR.Runtime.Infrastructure;
+using SlotCarRacingAR.Runtime.Features;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace SlotCarRacingAR.Runtime.UI
 {
     /// <summary>
-    /// Minimal race HUD for the active quick-race loop.
+    /// Race HUD for the active race loop.
     /// </summary>
     public sealed class RaceHud : MonoBehaviour
     {
         private SharedLobbyState _sharedState;
         private Canvas _canvas;
         private GameObject _root;
-        private Text _speedText;
         private Text _lapText;
         private Text _positionText;
-        private Text _messageText;
+        private Image _positionBackground;
         private bool _visible;
-        private float _maxSpeedMetersPerSecond = 0.25f;
 
         private void Start()
         {
@@ -28,6 +27,10 @@ namespace SlotCarRacingAR.Runtime.UI
         public void Bind(SharedLobbyState sharedState)
         {
             _sharedState = sharedState;
+        }
+
+        public void BindLocalCar(CarPlaceholder localCar)
+        {
         }
 
         public void SetVisible(bool visible)
@@ -41,7 +44,6 @@ namespace SlotCarRacingAR.Runtime.UI
 
         public void SetMaxSpeed(float maxSpeedMetersPerSecond)
         {
-            _maxSpeedMetersPerSecond = Mathf.Max(0.01f, maxSpeedMetersPerSecond);
         }
 
         private void Update()
@@ -53,46 +55,89 @@ namespace SlotCarRacingAR.Runtime.UI
 
             if (_sharedState == null)
             {
-                _speedText.text = "0%";
-                _lapText.text = "VUELTA 1/" + SharedLobbyState.RaceLapTarget;
-                _positionText.text = "POS 1/2";
-                _messageText.text = "Manten para acelerar";
+                _lapText.text = "VUELTA\n1/" + SharedLobbyState.RaceLapTarget;
+                SetPositionDisplay(1);
                 return;
             }
 
             bool localIsHost = _sharedState.IsServer;
             float localProgress = localIsHost ? _sharedState.HostProgress.Value : _sharedState.GuestProgress.Value;
             float rivalProgress = localIsHost ? _sharedState.GuestProgress.Value : _sharedState.HostProgress.Value;
-            float localSpeed = localIsHost ? _sharedState.HostSpeed.Value : _sharedState.GuestSpeed.Value;
             byte localLap = localIsHost ? _sharedState.HostLap.Value : _sharedState.GuestLap.Value;
             byte rivalLap = localIsHost ? _sharedState.GuestLap.Value : _sharedState.HostLap.Value;
-            bool localPenalty = localIsHost ? _sharedState.HostPenaltyActive.Value : _sharedState.GuestPenaltyActive.Value;
 
-            float speedPercent = Mathf.Clamp01(localSpeed / _maxSpeedMetersPerSecond) * 100f;
             int displayLap = Mathf.Clamp(localLap + 1, 1, SharedLobbyState.RaceLapTarget);
-            int position = localLap + localProgress >= rivalLap + rivalProgress ? 1 : 2;
+            int position = ResolveLocalPosition(localIsHost, localLap, localProgress, rivalLap, rivalProgress);
 
-            _speedText.text = speedPercent.ToString("F0") + "%";
-            _lapText.text = "VUELTA " + displayLap + "/" + SharedLobbyState.RaceLapTarget;
-            _positionText.text = "POS " + position + "/2";
+            _lapText.text = "VUELTA\n" + displayLap + "/" + SharedLobbyState.RaceLapTarget;
+            SetPositionDisplay(position);
+        }
 
-            if (_sharedState.Phase.Value == RacePhase.Finished)
+        private int ResolveLocalPosition(bool localIsHost, byte localLap, float localProgress, byte rivalLap, float rivalProgress)
+        {
+            float localFinishTime = localIsHost ? _sharedState.HostFinishTimeSeconds.Value : _sharedState.GuestFinishTimeSeconds.Value;
+            float rivalFinishTime = localIsHost ? _sharedState.GuestFinishTimeSeconds.Value : _sharedState.HostFinishTimeSeconds.Value;
+            bool localFinished = localFinishTime >= 0f;
+            bool rivalFinished = rivalFinishTime >= 0f;
+
+            if (localFinished && rivalFinished)
             {
-                byte localPlayer = localIsHost ? (byte)1 : (byte)2;
-                _messageText.text = _sharedState.WinnerPlayerId.Value == localPlayer ? "GANASTE" : "RIVAL GANA";
-                _messageText.color = _sharedState.WinnerPlayerId.Value == localPlayer
-                    ? new Color(0.2f, 0.95f, 0.45f)
-                    : new Color(1f, 0.65f, 0.25f);
+                return localFinishTime <= rivalFinishTime ? 1 : 2;
             }
-            else if (localPenalty)
+
+            if (localFinished)
             {
-                _messageText.text = "Muy rapido en curva";
-                _messageText.color = new Color(1f, 0.45f, 0.25f);
+                return 1;
             }
-            else
+
+            if (rivalFinished)
             {
-                _messageText.text = "Manten para acelerar";
-                _messageText.color = Color.white;
+                return 2;
+            }
+
+            return localLap + localProgress >= rivalLap + rivalProgress ? 1 : 2;
+        }
+
+        private void SetPositionDisplay(int position)
+        {
+            int clamped = Mathf.Clamp(position, 1, 4);
+            _positionText.text = FormatOrdinal(clamped);
+
+            if (_positionBackground != null)
+            {
+                _positionBackground.color = GetPositionColor(clamped);
+            }
+        }
+
+        private static string FormatOrdinal(int position)
+        {
+            switch (position)
+            {
+                case 1:
+                    return "1ro";
+                case 2:
+                    return "2do";
+                case 3:
+                    return "3ro";
+                case 4:
+                    return "4to";
+                default:
+                    return position.ToString() + "to";
+            }
+        }
+
+        private static Color GetPositionColor(int position)
+        {
+            switch (position)
+            {
+                case 1:
+                    return new Color(1.00f, 0.73f, 0.10f);
+                case 2:
+                    return new Color(0.78f, 0.82f, 0.86f);
+                case 3:
+                    return new Color(0.72f, 0.39f, 0.16f);
+                default:
+                    return RetroUi.TealDark;
             }
         }
 
@@ -121,56 +166,49 @@ namespace SlotCarRacingAR.Runtime.UI
             _root = new GameObject("RaceHudRoot");
             _root.transform.SetParent(canvasObj.transform, false);
             RectTransform rootRect = _root.AddComponent<RectTransform>();
-            rootRect.anchorMin = Vector2.zero;
-            rootRect.anchorMax = Vector2.one;
-            rootRect.offsetMin = Vector2.zero;
-            rootRect.offsetMax = Vector2.zero;
+            RetroUi.Fill(rootRect);
 
-            GameObject topPanel = CreatePanel("TopStatus", _root.transform, new Vector2(0.03f, 0.84f), new Vector2(0.56f, 0.96f));
-            _lapText = CreateText("LapText", topPanel.transform, new Vector2(0f, 0f), new Vector2(0.34f, 1f), 30, Color.white);
-            _positionText = CreateText("PositionText", topPanel.transform, new Vector2(0.34f, 0f), new Vector2(0.62f, 1f), 30, Color.white);
-            _speedText = CreateText("SpeedText", topPanel.transform, new Vector2(0.62f, 0f), new Vector2(1f, 1f), 34, new Color(1f, 0.82f, 0.2f));
+            RectTransform lapPanel = RetroUi.CreatePanel(
+                _root.transform,
+                "LapPanel",
+                new Vector2(0.03f, 0.82f),
+                new Vector2(0.16f, 0.96f),
+                RetroUi.Teal,
+                false);
+            _lapText = RetroUi.CreateText(
+                lapPanel,
+                "LapText",
+                "VUELTA\n1/" + SharedLobbyState.RaceLapTarget,
+                Vector2.zero,
+                Vector2.one,
+                32,
+                RetroUi.White,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
 
-            GameObject messagePanel = CreatePanel("MessagePanel", _root.transform, new Vector2(0.22f, 0.04f), new Vector2(0.78f, 0.14f));
-            _messageText = CreateText("MessageText", messagePanel.transform, Vector2.zero, Vector2.one, 32, Color.white);
-        }
+            RectTransform positionPanel = RetroUi.CreatePanel(
+                _root.transform,
+                "PositionPanel",
+                new Vector2(0.78f, 0.74f),
+                new Vector2(0.98f, 0.98f),
+                GetPositionColor(1),
+                false);
+            _positionBackground = positionPanel.GetComponent<Image>();
 
-        private static GameObject CreatePanel(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax)
-        {
-            GameObject panel = new GameObject(name);
-            panel.transform.SetParent(parent, false);
+            _positionText = RetroUi.CreateText(
+                positionPanel,
+                "PositionText",
+                "1ro",
+                Vector2.zero,
+                Vector2.one,
+                92,
+                RetroUi.White,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+            _positionText.resizeTextForBestFit = true;
+            _positionText.resizeTextMinSize = 54;
+            _positionText.resizeTextMaxSize = 100;
 
-            RectTransform rect = panel.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-
-            Image bg = panel.AddComponent<Image>();
-            bg.color = new Color(0f, 0f, 0f, 0.68f);
-
-            return panel;
-        }
-
-        private static Text CreateText(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, int fontSize, Color color)
-        {
-            GameObject textObj = new GameObject(name);
-            textObj.transform.SetParent(parent, false);
-
-            RectTransform rect = textObj.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = new Vector2(10f, 4f);
-            rect.offsetMax = new Vector2(-10f, -4f);
-
-            Text text = textObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = fontSize;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.color = color;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Truncate;
-            return text;
         }
 
         private void OnDestroy()

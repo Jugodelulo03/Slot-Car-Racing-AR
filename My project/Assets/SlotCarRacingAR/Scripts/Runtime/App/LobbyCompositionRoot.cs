@@ -276,7 +276,60 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void InitializeLobby()
         {
+            if (TryResumeExistingSession())
+            {
+                return;
+            }
+
             UnityEngine.Debug.Log("[Lobby] Composition root initialized. Start screen ready.");
+        }
+
+        private bool TryResumeExistingSession()
+        {
+            NetworkManager networkManager = NetworkManager.Singleton;
+            if (networkManager == null || !networkManager.IsListening)
+            {
+                return false;
+            }
+
+            _lanDiscovery.StopAll();
+            RegisterLobbyStatePrefab();
+            _sharedLobbyState = FindAnyObjectByType<SharedLobbyState>();
+            if (_sharedLobbyState != null)
+            {
+                _sharedLobbyState.OnPlayerCountChanged -= OnLobbyPlayerCountChanged;
+                _sharedLobbyState.OnPlayerCountChanged += OnLobbyPlayerCountChanged;
+                _sharedLobbyState.PrepareForRematchLobby();
+            }
+
+            ShowSharedLobbyUI();
+            byte playerCount = _sharedLobbyState != null
+                ? _sharedLobbyState.PlayerCount.Value
+                : (byte)(networkManager.IsServer ? networkManager.ConnectedClientsIds.Count : 2);
+            _sharedLobbyUI.UpdatePlayerCount(playerCount, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
+            if (playerCount >= 2)
+            {
+                _sharedLobbyUI.ShowConnectionConfirmation();
+            }
+
+            UnityEngine.Debug.Log("[Lobby] Resumed existing network session from Race.");
+            return true;
+        }
+
+        private PlayerRole GetCurrentRole()
+        {
+            if (_sessionManager != null && _sessionManager.Role != PlayerRole.None)
+            {
+                return _sessionManager.Role;
+            }
+
+            NetworkManager networkManager = NetworkManager.Singleton;
+            if (networkManager != null && networkManager.IsListening)
+            {
+                return networkManager.IsServer ? PlayerRole.Host : PlayerRole.Guest;
+            }
+
+            return PlayerRole.None;
         }
 
         /// <summary>
@@ -482,7 +535,7 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void OnLobbyPlayerCountChanged(byte oldCount, byte newCount)
         {
-            _sharedLobbyUI.UpdatePlayerCount(newCount, _sessionManager.Role, _sessionManager.GetLocalIPAddress());
+            _sharedLobbyUI.UpdatePlayerCount(newCount, GetCurrentRole(), _sessionManager.GetLocalIPAddress());
 
             if (oldCount < 2 && newCount >= 2)
             {

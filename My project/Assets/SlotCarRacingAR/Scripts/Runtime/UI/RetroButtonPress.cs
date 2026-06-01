@@ -1,0 +1,54 @@
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+namespace SlotCarRacingAR.Runtime.UI
+{
+    public sealed class RetroButtonPress : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
+    {
+        private static readonly Vector2 PressOffset = new Vector2(4f, -4f);
+
+        private RectTransform _rectTransform;
+        private Vector2 _restPosition;
+        private bool _pressed;
+
+        private void Awake()
+        {
+            _rectTransform = GetComponent<RectTransform>();
+            if (_rectTransform != null)
+            {
+                _restPosition = _rectTransform.anchoredPosition;
+            }
+        }
+
+        public void OnPointerDown(PointerEventData eventData)
+        {
+            SetPressed(true);
+        }
+
+        public void OnPointerUp(PointerEventData eventData)
+        {
+            SetPressed(false);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            SetPressed(false);
+        }
+
+        private void OnDisable()
+        {
+            SetPressed(false);
+        }
+
+        private void SetPressed(bool pressed)
+        {
+            if (_pressed == pressed || _rectTransform == null)
+            {
+                return;
+            }
+
+            _pressed = pressed;
+            _rectTransform.anchoredPosition = _restPosition + (pressed ? PressOffset : Vector2.zero);
+        }
+    }
+}

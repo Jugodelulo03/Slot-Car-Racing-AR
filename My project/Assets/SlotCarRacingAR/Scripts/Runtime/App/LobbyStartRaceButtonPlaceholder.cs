@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using SlotCarRacingAR.Runtime.UI;
 
 namespace SlotCarRacingAR.Runtime.App
 {
@@ -22,9 +23,28 @@ namespace SlotCarRacingAR.Runtime.App
                 rectTransform.offsetMax = Vector2.zero;
             }
 
-            if (TryGetComponent<Image>(out Image image))
+            if (!TryGetComponent<Image>(out Image image))
             {
-                image.color = new Color(0.15f, 0.7f, 0.3f, 0.85f);
+                image = gameObject.AddComponent<Image>();
+            }
+
+            if (image != null)
+            {
+                RetroUi.StyleImageAsPanel(image, RetroUi.Red);
+            }
+
+            if (transform.Find("Label") == null)
+            {
+                RetroUi.CreateText(
+                    transform,
+                    "Label",
+                    "CONTINUAR",
+                    Vector2.zero,
+                    Vector2.one,
+                    30,
+                    RetroUi.White,
+                    TextAnchor.MiddleCenter,
+                    FontStyle.BoldAndItalic);
             }
         }
 

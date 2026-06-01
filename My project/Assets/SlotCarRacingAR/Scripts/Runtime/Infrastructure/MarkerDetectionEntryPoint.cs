@@ -20,12 +20,15 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
     {
         private const string AnchorMarkerName = "track-anchor";
         private const int RequiredSamples = 8;
+        public const float DefaultTrackScale = 0.60f;
+        public const float MinTrackScale = 0.40f;
+        public const float MaxTrackScale = 1.30f;
 
         [SerializeField] private ARTrackedImageManager _trackedImageManager;
         [SerializeField] private bool _enableEditorFallback = true;
 
         [Header("Track Scale")]
-        [SerializeField] [Range(0.10f, 1.0f)] private float _trackScale = 0.25f;
+        [SerializeField] [Range(MinTrackScale, MaxTrackScale)] private float _trackScale = DefaultTrackScale;
 
         [Header("3D Track Model")]
         [Tooltip("Optional: racing line data exported from the Waypoint Placer editor tool.")]
@@ -110,6 +113,16 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
         /// <summary>Describes which curve detection path was used (shown in debug UI).</summary>
         public string CurveDetectionMode { get; private set; } = "not built";
 
+        private void Awake()
+        {
+            _trackScale = NormalizeInitialTrackScale(_trackScale);
+        }
+
+        private void OnValidate()
+        {
+            _trackScale = NormalizeInitialTrackScale(_trackScale);
+        }
+
         public void Bind(
             TrackPlaceholder trackPlaceholder,
             CarPlaceholder carPlaceholder,
@@ -143,12 +156,22 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
 
         public void SetTrackScale(float scale)
         {
-            _trackScale = Mathf.Clamp(scale, 0.10f, 1.0f);
+            _trackScale = Mathf.Clamp(scale, MinTrackScale, MaxTrackScale);
 
             if (_isAnchored)
             {
                 ApplyLocalLayout();
             }
+        }
+
+        private static float NormalizeInitialTrackScale(float scale)
+        {
+            if (scale < MinTrackScale)
+            {
+                return DefaultTrackScale;
+            }
+
+            return Mathf.Clamp(scale, MinTrackScale, MaxTrackScale);
         }
 
         public void SetHeightOffset(float offsetMeters)
@@ -542,6 +565,7 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
 
             // Apply scale + centering
             ApplySceneSetupTransform();
+            TrackModelLoader.ImproveSmallScaleTextureSampling(trackRoot.gameObject);
 
             // Read waypoints in anchor-local space (after final transform is applied)
             RebuildTrackFromSceneWaypoints();

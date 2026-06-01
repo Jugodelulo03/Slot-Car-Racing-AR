@@ -5,14 +5,13 @@ using UnityEngine.UI;
 namespace SlotCarRacingAR.Runtime.UI
 {
     /// <summary>
-    /// Full-screen countdown overlay: displays 3, 2, 1, GO! centered on screen.
+    /// Full-screen countdown overlay.
     /// </summary>
     public sealed class CountdownOverlay : MonoBehaviour
     {
         private Text _countdownText;
         private GameObject _panel;
 
-        /// <summary>Fired when countdown finishes (GO! displayed).</summary>
         public event Action OnCountdownComplete;
 
         private void Awake()
@@ -21,7 +20,6 @@ namespace SlotCarRacingAR.Runtime.UI
             _panel.SetActive(false);
         }
 
-        /// <summary>Show the overlay and display a countdown number.</summary>
         public void Show(byte value)
         {
             _panel.SetActive(true);
@@ -29,19 +27,17 @@ namespace SlotCarRacingAR.Runtime.UI
             if (value == 0)
             {
                 _countdownText.text = "GO!";
-                _countdownText.color = new Color(0.2f, 1f, 0.4f);
-                _countdownText.fontSize = 200;
+                _countdownText.color = RetroUi.Green;
+                _countdownText.fontSize = 150;
                 OnCountdownComplete?.Invoke();
+                return;
             }
-            else
-            {
-                _countdownText.text = value.ToString();
-                _countdownText.color = Color.white;
-                _countdownText.fontSize = 240;
-            }
+
+            _countdownText.text = value.ToString();
+            _countdownText.color = RetroUi.Yellow;
+            _countdownText.fontSize = 230;
         }
 
-        /// <summary>Hide the overlay after GO! has been shown briefly.</summary>
         public void Hide()
         {
             _panel.SetActive(false);
@@ -51,41 +47,52 @@ namespace SlotCarRacingAR.Runtime.UI
         {
             Canvas canvas = gameObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 50; // Above AR setup UI
+            canvas.sortingOrder = 50;
 
             CanvasScaler scaler = gameObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920, 1080);
             scaler.matchWidthOrHeight = 0.5f;
 
-            // Full-screen semi-transparent panel
             _panel = new GameObject("CountdownPanel");
             _panel.transform.SetParent(transform, false);
             RectTransform panelRect = _panel.AddComponent<RectTransform>();
-            panelRect.anchorMin = Vector2.zero;
-            panelRect.anchorMax = Vector2.one;
-            panelRect.offsetMin = Vector2.zero;
-            panelRect.offsetMax = Vector2.zero;
+            RetroUi.Fill(panelRect);
 
-            Image bg = _panel.AddComponent<Image>();
-            bg.color = new Color(0f, 0f, 0f, 0.5f);
+            RetroUi.CreateFullScreenBackground(_panel.transform, "CountdownBackground", false);
 
-            // Centered countdown number
-            GameObject textObj = new GameObject("CountdownText");
-            textObj.transform.SetParent(_panel.transform, false);
-            RectTransform textRect = textObj.AddComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0.2f, 0.3f);
-            textRect.anchorMax = new Vector2(0.8f, 0.7f);
-            textRect.offsetMin = Vector2.zero;
-            textRect.offsetMax = Vector2.zero;
+            RectTransform card = RetroUi.CreatePanel(
+                _panel.transform,
+                "CountdownCard",
+                new Vector2(0.20f, 0.25f),
+                new Vector2(0.80f, 0.72f),
+                RetroUi.Teal,
+                false);
 
-            _countdownText = textObj.AddComponent<Text>();
-            _countdownText.text = "";
-            _countdownText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            _countdownText.fontSize = 240;
-            _countdownText.alignment = TextAnchor.MiddleCenter;
-            _countdownText.color = Color.white;
-            _countdownText.fontStyle = FontStyle.Bold;
+            RetroUi.CreateText(
+                card,
+                "CountdownLabel",
+                "LA CARRERA EMPIEZA EN",
+                new Vector2(0.08f, 0.70f),
+                new Vector2(0.92f, 0.92f),
+                36,
+                RetroUi.White,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+
+            _countdownText = RetroUi.CreateText(
+                card,
+                "CountdownText",
+                "",
+                new Vector2(0.18f, 0.02f),
+                new Vector2(0.82f, 0.72f),
+                230,
+                RetroUi.Yellow,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+            _countdownText.resizeTextForBestFit = true;
+            _countdownText.resizeTextMinSize = 90;
+            _countdownText.resizeTextMaxSize = 240;
         }
     }
 }

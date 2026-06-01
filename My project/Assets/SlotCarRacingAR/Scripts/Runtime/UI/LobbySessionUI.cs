@@ -1,20 +1,24 @@
+using SlotCarRacingAR.Runtime.Infrastructure;
 using UnityEngine;
 using UnityEngine.UI;
-using SlotCarRacingAR.Runtime.Infrastructure;
 
 namespace SlotCarRacingAR.Runtime.UI
 {
     /// <summary>
-    /// Displays session status in the Lobby after "Create Match" is pressed.
-    /// Shows creating, waiting, connected, or failed states with semantic colors.
+    /// Displays host session status after "Create Match" is pressed.
     /// </summary>
     public sealed class LobbySessionUI : MonoBehaviour
     {
         private Text _statusText;
         private Text _detailText;
+        private Text _sessionCodeText;
+        private Text _networkText;
+        private Image _networkLight;
         private Button _retryButton;
         private Button _backButton;
-        private GameObject _buttonPanel;
+        private Button _cancelButton;
+        private GameObject _failureButtonPanel;
+        private GameObject _cancelButtonObj;
 
         public event System.Action OnRetryClicked;
         public event System.Action OnBackClicked;
@@ -26,8 +30,20 @@ namespace SlotCarRacingAR.Runtime.UI
 
         private void OnDestroy()
         {
-            if (_retryButton != null) _retryButton.onClick.RemoveAllListeners();
-            if (_backButton != null) _backButton.onClick.RemoveAllListeners();
+            if (_retryButton != null)
+            {
+                _retryButton.onClick.RemoveAllListeners();
+            }
+
+            if (_backButton != null)
+            {
+                _backButton.onClick.RemoveAllListeners();
+            }
+
+            if (_cancelButton != null)
+            {
+                _cancelButton.onClick.RemoveAllListeners();
+            }
         }
 
         public void UpdateState(SessionState state, string ipAddress, string failureReason)
@@ -35,34 +51,47 @@ namespace SlotCarRacingAR.Runtime.UI
             switch (state)
             {
                 case SessionState.Creating:
-                    _statusText.text = "Creando sesión...";
-                    _statusText.color = new Color(1f, 0.843f, 0.25f); // amber
-                    _detailText.text = "Iniciando servidor local.";
-                    SetButtonsVisible(false);
+                    _statusText.text = "CREANDO SESION";
+                    _statusText.color = RetroUi.Yellow;
+                    _detailText.text = "Iniciando servidor local...";
+                    _sessionCodeText.text = "--";
+                    _networkText.text = "Preparando red local";
+                    _networkLight.color = RetroUi.Yellow;
+                    SetFailureButtonsVisible(false);
+                    SetCancelVisible(true);
                     break;
 
                 case SessionState.WaitingForPlayer:
-                    _statusText.text = "Esperando jugador 2";
-                    _statusText.color = new Color(1f, 0.843f, 0.25f); // amber
-                    _detailText.text =
-                        "Tu IP: " + ipAddress + "\n\n" +
-                        "El otro jugador debe estar en la misma red\n" +
-                        "y seleccionar \"Unirse\" en su dispositivo.";
-                    SetButtonsVisible(false);
+                    _statusText.text = "ESPERANDO RIVAL";
+                    _statusText.color = RetroUi.Yellow;
+                    _detailText.text = "Pide a tu companero que abra la app y se una.";
+                    _sessionCodeText.text = string.IsNullOrWhiteSpace(ipAddress) ? "SIN IP" : ipAddress;
+                    _networkText.text = "Conectado a red local";
+                    _networkLight.color = RetroUi.Green;
+                    SetFailureButtonsVisible(false);
+                    SetCancelVisible(true);
                     break;
 
                 case SessionState.Connected:
-                    _statusText.text = "¡Jugador 2 conectado!";
-                    _statusText.color = new Color(0.3f, 0.9f, 0.3f); // green
+                    _statusText.text = "RIVAL CONECTADO";
+                    _statusText.color = RetroUi.Green;
                     _detailText.text = "Preparando la carrera...";
-                    SetButtonsVisible(false);
+                    _sessionCodeText.text = string.IsNullOrWhiteSpace(ipAddress) ? "OK" : ipAddress;
+                    _networkText.text = "Conexion lista";
+                    _networkLight.color = RetroUi.Green;
+                    SetFailureButtonsVisible(false);
+                    SetCancelVisible(false);
                     break;
 
                 case SessionState.Failed:
-                    _statusText.text = "Error de conexión";
-                    _statusText.color = new Color(0.95f, 0.3f, 0.3f); // red
-                    _detailText.text = failureReason;
-                    SetButtonsVisible(true);
+                    _statusText.text = "ERROR DE CONEXION";
+                    _statusText.color = RetroUi.Red;
+                    _detailText.text = string.IsNullOrWhiteSpace(failureReason) ? "No se pudo crear la sesion." : failureReason;
+                    _sessionCodeText.text = "ERROR";
+                    _networkText.text = "Revisa Wi-Fi o hotspot";
+                    _networkLight.color = RetroUi.Red;
+                    SetFailureButtonsVisible(true);
+                    SetCancelVisible(false);
                     break;
 
                 default:
@@ -71,139 +100,202 @@ namespace SlotCarRacingAR.Runtime.UI
             }
         }
 
-        private void SetButtonsVisible(bool visible)
+        private void SetFailureButtonsVisible(bool visible)
         {
-            if (_buttonPanel != null)
-                _buttonPanel.SetActive(visible);
+            if (_failureButtonPanel != null)
+            {
+                _failureButtonPanel.SetActive(visible);
+            }
+        }
+
+        private void SetCancelVisible(bool visible)
+        {
+            if (_cancelButtonObj != null)
+            {
+                _cancelButtonObj.SetActive(visible);
+            }
         }
 
         private void BuildUI()
         {
             RectTransform root = GetComponent<RectTransform>();
-            if (root == null) return;
+            if (root == null)
+            {
+                return;
+            }
 
-            // ── Background ──
-            GameObject bgObj = new GameObject("SessionBg");
-            bgObj.transform.SetParent(root, false);
-            Image bgImage = bgObj.AddComponent<Image>();
-            bgImage.color = new Color(0.08f, 0.08f, 0.12f, 0.95f);
-            bgImage.raycastTarget = true; // block input to screen behind
-            RectTransform bgRect = bgObj.GetComponent<RectTransform>();
-            bgRect.anchorMin = Vector2.zero;
-            bgRect.anchorMax = Vector2.one;
-            bgRect.offsetMin = Vector2.zero;
-            bgRect.offsetMax = Vector2.zero;
+            RetroUi.CreateFullScreenBackground(root, "SessionBackground", true);
 
-            // ── Status text (center-top area) ──
-            GameObject statusObj = new GameObject("StatusText");
-            statusObj.transform.SetParent(root, false);
-            _statusText = statusObj.AddComponent<Text>();
-            _statusText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            _statusText.fontSize = 42;
-            _statusText.fontStyle = FontStyle.Bold;
-            _statusText.alignment = TextAnchor.MiddleCenter;
-            _statusText.color = Color.white;
-            _statusText.raycastTarget = false;
-            RectTransform statusRect = statusObj.GetComponent<RectTransform>();
-            statusRect.anchorMin = new Vector2(0.1f, 0.60f);
-            statusRect.anchorMax = new Vector2(0.9f, 0.80f);
-            statusRect.offsetMin = Vector2.zero;
-            statusRect.offsetMax = Vector2.zero;
+            RectTransform panel = RetroUi.CreatePanel(
+                root,
+                "HostSessionPanel",
+                new Vector2(0.06f, 0.12f),
+                new Vector2(0.94f, 0.88f),
+                RetroUi.Teal,
+                true);
 
-            // ── Detail text (center area) ──
-            GameObject detailObj = new GameObject("DetailText");
-            detailObj.transform.SetParent(root, false);
-            _detailText = detailObj.AddComponent<Text>();
-            _detailText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            _detailText.fontSize = 26;
-            _detailText.alignment = TextAnchor.MiddleCenter;
-            _detailText.color = new Color(0.85f, 0.85f, 0.85f);
-            _detailText.raycastTarget = false;
-            RectTransform detailRect = detailObj.GetComponent<RectTransform>();
-            detailRect.anchorMin = new Vector2(0.1f, 0.35f);
-            detailRect.anchorMax = new Vector2(0.9f, 0.58f);
-            detailRect.offsetMin = Vector2.zero;
-            detailRect.offsetMax = Vector2.zero;
+            RetroUi.CreateLogo(
+                panel,
+                "Face2RaceLogo",
+                new Vector2(0.08f, 0.74f),
+                new Vector2(0.40f, 1.00f));
 
-            // ── Button panel (bottom zone — only visible on failure) ──
-            _buttonPanel = new GameObject("ButtonPanel");
-            _buttonPanel.transform.SetParent(root, false);
-            RectTransform panelRect = _buttonPanel.AddComponent<RectTransform>();
-            panelRect.anchorMin = new Vector2(0.1f, 0.08f);
-            panelRect.anchorMax = new Vector2(0.9f, 0.30f);
-            panelRect.offsetMin = Vector2.zero;
-            panelRect.offsetMax = Vector2.zero;
+            RectTransform codePlate = RetroUi.CreatePanel(
+                panel,
+                "CodePlate",
+                new Vector2(0.10f, 0.48f),
+                new Vector2(0.42f, 0.74f),
+                RetroUi.CreamLight,
+                false);
 
-            // Retry button (amber)
-            _retryButton = CreateButton(
-                panelRect,
+            RetroUi.CreateText(
+                codePlate,
+                "CodeLabel",
+                "SESION ACTIVA",
+                new Vector2(0.10f, 0.62f),
+                new Vector2(0.90f, 0.96f),
+                24,
+                RetroUi.Black,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic,
+                false);
+
+            _sessionCodeText = RetroUi.CreateText(
+                codePlate,
+                "SessionCode",
+                "--",
+                new Vector2(0.05f, 0.02f),
+                new Vector2(0.95f, 0.66f),
+                44,
+                RetroUi.Yellow,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+            _sessionCodeText.resizeTextForBestFit = true;
+            _sessionCodeText.resizeTextMinSize = 22;
+            _sessionCodeText.resizeTextMaxSize = 44;
+
+            RectTransform networkPlate = RetroUi.CreatePanel(
+                panel,
+                "NetworkPlate",
+                new Vector2(0.10f, 0.37f),
+                new Vector2(0.44f, 0.47f),
+                RetroUi.WithAlpha(RetroUi.TealDark, 0.90f),
+                false);
+
+            _networkLight = RetroUi.CreateStatusLight(
+                networkPlate,
+                "NetworkLight",
+                new Vector2(0.05f, 0.18f),
+                new Vector2(0.13f, 0.82f),
+                RetroUi.Yellow);
+
+            _networkText = RetroUi.CreateText(
+                networkPlate,
+                "NetworkText",
+                "Preparando red local",
+                new Vector2(0.14f, 0.02f),
+                new Vector2(0.95f, 0.98f),
+                24,
+                RetroUi.White,
+                TextAnchor.MiddleLeft,
+                FontStyle.BoldAndItalic);
+
+            RectTransform statusCard = RetroUi.CreatePanel(
+                panel,
+                "StatusCard",
+                new Vector2(0.08f, 0.12f),
+                new Vector2(0.44f, 0.34f),
+                RetroUi.CreamLight,
+                false);
+
+            _statusText = RetroUi.CreateText(
+                statusCard,
+                "StatusText",
+                "CREANDO SESION",
+                new Vector2(0.08f, 0.52f),
+                new Vector2(0.92f, 0.94f),
+                30,
+                RetroUi.Yellow,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+
+            _detailText = RetroUi.CreateText(
+                statusCard,
+                "DetailText",
+                "Iniciando servidor local...",
+                new Vector2(0.08f, 0.08f),
+                new Vector2(0.92f, 0.50f),
+                24,
+                RetroUi.Black,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic,
+                false);
+
+            RetroUi.CreateText(
+                panel,
+                "MarkerPrompt",
+                "COLOCA EL MARCADOR\nSOBRE LA MESA",
+                new Vector2(0.55f, 0.48f),
+                new Vector2(0.91f, 0.72f),
+                36,
+                RetroUi.White,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+
+            RetroUi.CreateText(
+                panel,
+                "MarkerHint",
+                "Ambos deben apuntar al mismo marcador",
+                new Vector2(0.55f, 0.32f),
+                new Vector2(0.91f, 0.46f),
+                26,
+                RetroUi.Cream,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+
+            _cancelButton = RetroUi.CreateButton(
+                root,
+                "CancelButton",
+                "Cancelar",
+                new Vector2(0.58f, 0.03f),
+                new Vector2(0.76f, 0.12f),
+                RetroUi.Red,
+                RetroUi.White,
+                30);
+            _cancelButtonObj = _cancelButton.gameObject;
+            _cancelButton.onClick.AddListener(() => OnBackClicked?.Invoke());
+
+            _failureButtonPanel = new GameObject("FailureButtons");
+            _failureButtonPanel.transform.SetParent(root, false);
+            RectTransform failRect = _failureButtonPanel.AddComponent<RectTransform>();
+            failRect.anchorMin = new Vector2(0.22f, 0.03f);
+            failRect.anchorMax = new Vector2(0.78f, 0.15f);
+            failRect.offsetMin = Vector2.zero;
+            failRect.offsetMax = Vector2.zero;
+
+            _retryButton = RetroUi.CreateButton(
+                failRect,
                 "RetryButton",
                 "Reintentar",
-                new Color(1f, 0.843f, 0.25f),
-                new Color(0.12f, 0.12f, 0.12f),
-                new Vector2(0.05f, 0.1f),
-                new Vector2(0.47f, 0.9f)
-            );
+                new Vector2(0.04f, 0.10f),
+                new Vector2(0.48f, 0.90f),
+                RetroUi.Yellow,
+                RetroUi.White,
+                30);
             _retryButton.onClick.AddListener(() => OnRetryClicked?.Invoke());
 
-            // Back button (subtle dark)
-            _backButton = CreateButton(
-                panelRect,
+            _backButton = RetroUi.CreateButton(
+                failRect,
                 "BackButton",
                 "Volver",
-                new Color(0.25f, 0.25f, 0.32f),
-                Color.white,
-                new Vector2(0.53f, 0.1f),
-                new Vector2(0.95f, 0.9f)
-            );
+                new Vector2(0.52f, 0.10f),
+                new Vector2(0.96f, 0.90f),
+                RetroUi.Red,
+                RetroUi.White,
+                30);
             _backButton.onClick.AddListener(() => OnBackClicked?.Invoke());
 
-            _buttonPanel.SetActive(false);
-        }
-
-        private static Button CreateButton(
-            RectTransform parent,
-            string name,
-            string label,
-            Color bgColor,
-            Color textColor,
-            Vector2 anchorMin,
-            Vector2 anchorMax)
-        {
-            GameObject btnObj = new GameObject(name);
-            btnObj.transform.SetParent(parent, false);
-
-            Image btnImage = btnObj.AddComponent<Image>();
-            btnImage.color = bgColor;
-
-            Button button = btnObj.AddComponent<Button>();
-            button.targetGraphic = btnImage;
-
-            RectTransform btnRect = btnObj.GetComponent<RectTransform>();
-            btnRect.anchorMin = anchorMin;
-            btnRect.anchorMax = anchorMax;
-            btnRect.offsetMin = Vector2.zero;
-            btnRect.offsetMax = Vector2.zero;
-
-            GameObject labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(btnObj.transform, false);
-
-            Text labelText = labelObj.AddComponent<Text>();
-            labelText.text = label;
-            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            labelText.fontSize = 30;
-            labelText.fontStyle = FontStyle.Bold;
-            labelText.alignment = TextAnchor.MiddleCenter;
-            labelText.color = textColor;
-            labelText.raycastTarget = false;
-
-            RectTransform labelRect = labelObj.GetComponent<RectTransform>();
-            labelRect.anchorMin = Vector2.zero;
-            labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = Vector2.zero;
-            labelRect.offsetMax = Vector2.zero;
-
-            return button;
+            SetFailureButtonsVisible(false);
         }
     }
 }

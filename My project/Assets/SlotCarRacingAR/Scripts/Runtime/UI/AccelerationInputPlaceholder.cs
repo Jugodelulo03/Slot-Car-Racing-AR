@@ -16,8 +16,9 @@ namespace SlotCarRacingAR.Runtime.UI
 
         private bool _isPressed;
         private Image _image;
-        private readonly Color _normalColor = new Color(1f, 0.45f, 0.15f, 0.75f);
-        private readonly Color _pressedColor = new Color(1f, 0.75f, 0.18f, 0.95f);
+        private Text _label;
+        private readonly Color _normalColor = RetroUi.Teal;
+        private readonly Color _pressedColor = RetroUi.Yellow;
 
         public event Action<bool> OnHoldChanged;
 
@@ -25,17 +26,25 @@ namespace SlotCarRacingAR.Runtime.UI
         {
             if (TryGetComponent<RectTransform>(out RectTransform rectTransform))
             {
-                rectTransform.anchorMin = new Vector2(0.82f, 0.08f);
-                rectTransform.anchorMax = new Vector2(0.97f, 0.32f);
-                rectTransform.offsetMin = Vector2.zero;
-                rectTransform.offsetMax = Vector2.zero;
+                rectTransform.anchorMin = new Vector2(1f, 0f);
+                rectTransform.anchorMax = new Vector2(1f, 0f);
+                rectTransform.pivot = new Vector2(1f, 0f);
+                rectTransform.anchoredPosition = new Vector2(-42f, 42f);
+                rectTransform.sizeDelta = new Vector2(220f, 220f);
             }
 
-            if (TryGetComponent<Image>(out Image image))
+            if (!TryGetComponent<Image>(out Image image))
+            {
+                image = gameObject.AddComponent<Image>();
+            }
+
+            if (image != null)
             {
                 _image = image;
-                _image.color = _normalColor;
+                RetroUi.StyleImageAsCircle(_image, _normalColor);
             }
+
+            BuildLabel();
         }
 
         /// <summary>
@@ -98,8 +107,35 @@ namespace SlotCarRacingAR.Runtime.UI
                 _image.color = _isPressed ? _pressedColor : _normalColor;
             }
 
+            if (_label != null)
+            {
+                _label.color = _isPressed ? RetroUi.Black : RetroUi.Yellow;
+            }
+
             OnHoldChanged?.Invoke(_isPressed);
             _carReference.Car?.SetAccelerationHeld(_isPressed);
+        }
+
+        private void BuildLabel()
+        {
+            if (transform.Find("AccelerationLabel") != null)
+            {
+                return;
+            }
+
+            _label = RetroUi.CreateText(
+                transform,
+                "AccelerationLabel",
+                "ACELERAR",
+                new Vector2(0.10f, 0.22f),
+                new Vector2(0.90f, 0.78f),
+                28,
+                RetroUi.Yellow,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic);
+            _label.resizeTextForBestFit = true;
+            _label.resizeTextMinSize = 16;
+            _label.resizeTextMaxSize = 28;
         }
 
         /// <summary>

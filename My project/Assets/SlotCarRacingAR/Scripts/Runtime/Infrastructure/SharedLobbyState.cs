@@ -139,6 +139,42 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             NetworkVariableWritePermission.Server
         );
 
+        public NetworkVariable<float> HostFinishTimeSeconds = new(
+            -1f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+        public NetworkVariable<float> GuestFinishTimeSeconds = new(
+            -1f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+        public NetworkVariable<bool> RematchRequested = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+        public NetworkVariable<bool> HostRematchAccepted = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+        public NetworkVariable<bool> GuestRematchAccepted = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+        public NetworkVariable<byte> RematchLobbySignal = new(
+            0,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
         public event Action OnRaceStateChanged;
 
         public event Action<byte> OnWinnerChanged;
@@ -175,6 +211,12 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             HostPenaltyActive.OnValueChanged += HandleRaceBoolChanged;
             GuestPenaltyActive.OnValueChanged += HandleRaceBoolChanged;
             WinnerPlayerId.OnValueChanged += HandleWinnerChanged;
+            HostFinishTimeSeconds.OnValueChanged += HandleRaceFloatChanged;
+            GuestFinishTimeSeconds.OnValueChanged += HandleRaceFloatChanged;
+            RematchRequested.OnValueChanged += HandleRaceBoolChanged;
+            HostRematchAccepted.OnValueChanged += HandleRaceBoolChanged;
+            GuestRematchAccepted.OnValueChanged += HandleRaceBoolChanged;
+            RematchLobbySignal.OnValueChanged += HandleRaceByteChanged;
             UnityEngine.Debug.Log("[SharedLobbyState] Spawned. PlayerCount=" + PlayerCount.Value + " IsServer=" + IsServer);
         }
 
@@ -202,6 +244,12 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             HostPenaltyActive.OnValueChanged -= HandleRaceBoolChanged;
             GuestPenaltyActive.OnValueChanged -= HandleRaceBoolChanged;
             WinnerPlayerId.OnValueChanged -= HandleWinnerChanged;
+            HostFinishTimeSeconds.OnValueChanged -= HandleRaceFloatChanged;
+            GuestFinishTimeSeconds.OnValueChanged -= HandleRaceFloatChanged;
+            RematchRequested.OnValueChanged -= HandleRaceBoolChanged;
+            HostRematchAccepted.OnValueChanged -= HandleRaceBoolChanged;
+            GuestRematchAccepted.OnValueChanged -= HandleRaceBoolChanged;
+            RematchLobbySignal.OnValueChanged -= HandleRaceByteChanged;
         }
 
         // ─── Race Setup Methods ───
@@ -282,6 +330,8 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             HostPenaltyActive.Value = false;
             GuestPenaltyActive.Value = false;
             WinnerPlayerId.Value = 0;
+            HostFinishTimeSeconds.Value = -1f;
+            GuestFinishTimeSeconds.Value = -1f;
         }
 
         public void PublishRaceState(byte playerId, float progress, float speed, byte lap, bool penaltyActive)
@@ -307,14 +357,125 @@ namespace SlotCarRacingAR.Runtime.Infrastructure
             }
         }
 
-        public void FinishRace(byte winnerPlayerId)
+        public void FinishRace(byte winnerPlayerId, float hostFinishTimeSeconds, float guestFinishTimeSeconds)
         {
             if (!IsServer || winnerPlayerId == 0) return;
 
+            HostFinishTimeSeconds.Value = Mathf.Max(0f, hostFinishTimeSeconds);
+            GuestFinishTimeSeconds.Value = Mathf.Max(0f, guestFinishTimeSeconds);
             WinnerPlayerId.Value = winnerPlayerId;
             HostAccelerationHeld.Value = false;
             GuestAccelerationHeld.Value = false;
             Phase.Value = RacePhase.Finished;
+        }
+
+        public void PrepareForRematchLobby()
+        {
+            if (IsServer)
+            {
+                ResetForLobbyOnServer(true);
+            }
+            else
+            {
+                PrepareForRematchLobbyServerRpc();
+            }
+        }
+
+        public void RequestRematch()
+        {
+            if (!IsServer)
+            {
+                return;
+            }
+
+            RematchRequested.Value = true;
+            HostRematchAccepted.Value = true;
+            GuestRematchAccepted.Value = false;
+        }
+
+        public void AcceptRematch()
+        {
+            if (IsServer)
+            {
+                HostRematchAccepted.Value = true;
+                TrySignalRematchLobby();
+            }
+            else
+            {
+                AcceptRematchServerRpc();
+            }
+        }
+
+        public void ReturnToLobbyFromPodium()
+        {
+            if (IsServer)
+            {
+                SignalReturnToLobby();
+            }
+            else
+            {
+                ReturnToLobbyFromPodiumServerRpc();
+            }
+        }
+
+        private void ResetForLobbyOnServer(bool clearRematchState)
+        {
+            HostReady.Value = false;
+            GuestReady.Value = false;
+            CountdownValue.Value = 0;
+            ResetRaceState();
+            Phase.Value = RacePhase.Setup;
+
+            if (clearRematchState)
+            {
+                RematchRequested.Value = false;
+                HostRematchAccepted.Value = false;
+                GuestRematchAccepted.Value = false;
+            }
+        }
+
+        private void TrySignalRematchLobby()
+        {
+            if (!IsServer || !RematchRequested.Value)
+            {
+                return;
+            }
+
+            bool needsGuestAcceptance = PlayerCount.Value >= 2;
+            if (!HostRematchAccepted.Value || (needsGuestAcceptance && !GuestRematchAccepted.Value))
+            {
+                return;
+            }
+
+            SignalReturnToLobby();
+        }
+
+        private void SignalReturnToLobby()
+        {
+            ResetForLobbyOnServer(true);
+            unchecked
+            {
+                RematchLobbySignal.Value++;
+            }
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        private void PrepareForRematchLobbyServerRpc()
+        {
+            ResetForLobbyOnServer(true);
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        private void AcceptRematchServerRpc()
+        {
+            GuestRematchAccepted.Value = true;
+            TrySignalRematchLobby();
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        private void ReturnToLobbyFromPodiumServerRpc()
+        {
+            SignalReturnToLobby();
         }
 
         [ServerRpc(RequireOwnership = false)]

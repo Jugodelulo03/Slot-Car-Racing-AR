@@ -31,6 +31,17 @@ namespace SlotCarRacingAR.Runtime.Features
         public static string DiagnosticLog { get; private set; } = "not loaded yet";
 
         private static readonly System.Text.StringBuilder _diagBuf = new();
+        private static readonly string[] TextureProperties =
+        {
+            "_MainTex",
+            "_BaseMap",
+            "_BaseColorMap",
+            "_BaseColorTexture",
+            "_BaseColorTex",
+            "baseColorTexture",
+            "_baseColorTexture",
+            "_AlbedoMap",
+        };
 
         public void Load(GameObject prefab, Transform parent, float targetSize, float heightOffset)
         {
@@ -74,6 +85,7 @@ namespace SlotCarRacingAR.Runtime.Features
             _diagBuf.AppendLine();
 
             FixAllMaterials(_instance);
+            ImproveSmallScaleTextureSampling(_instance);
 
             // Preserve prefab import rotation & scale (handles Z-up→Y-up, cm→m, etc.)
             _prefabRotation = _instance.transform.localRotation;
@@ -163,6 +175,68 @@ namespace SlotCarRacingAR.Runtime.Features
 
         public GameObject Instance => _instance;
 
+        public static int ImproveSmallScaleTextureSampling(GameObject obj)
+        {
+            if (obj == null)
+            {
+                return 0;
+            }
+
+            var touchedTextures = new System.Collections.Generic.HashSet<Texture>();
+            Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer renderer in renderers)
+            {
+                Material[] materials = renderer.materials;
+                foreach (Material material in materials)
+                {
+                    if (material == null)
+                    {
+                        continue;
+                    }
+
+                    bool materialHasTexture = false;
+                    foreach (string propertyName in material.GetTexturePropertyNames())
+                    {
+                        Texture texture = material.GetTexture(propertyName);
+                        if (texture != null && touchedTextures.Add(texture))
+                        {
+                            ConfigureTextureForSmallScale(texture);
+                        }
+
+                        materialHasTexture |= texture != null;
+                    }
+
+                    foreach (string propertyName in TextureProperties)
+                    {
+                        if (!material.HasProperty(propertyName))
+                        {
+                            continue;
+                        }
+
+                        Texture texture = material.GetTexture(propertyName);
+                        if (texture != null && touchedTextures.Add(texture))
+                        {
+                            ConfigureTextureForSmallScale(texture);
+                        }
+
+                        materialHasTexture |= texture != null;
+                    }
+
+                    if (materialHasTexture)
+                    {
+                        ConfigureTexturedMaterialForTrack(material);
+                    }
+                }
+            }
+
+            if (touchedTextures.Count > 0)
+            {
+                UnityEngine.Debug.Log($"[TrackModelLoader] Improved small-scale sampling on {touchedTextures.Count} track textures.");
+            }
+
+            return touchedTextures.Count;
+        }
+
         private static Bounds ComputeBounds(GameObject obj)
         {
             Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
@@ -250,18 +324,42 @@ namespace SlotCarRacingAR.Runtime.Features
                     newMat.SetFloat("_Glossiness", 0f);
 
                     // Try to preserve base texture from various property names
-                    string[] texProps = { "_MainTex", "_BaseMap", "_BaseColorTexture", "baseColorTexture", "_AlbedoMap" };
-                    foreach (string prop in texProps)
+                    bool hasTexture = false;
+                    foreach (string prop in TextureProperties)
                     {
                         if (oldMat.HasProperty(prop))
                         {
                             Texture tex = oldMat.GetTexture(prop);
                             if (tex != null)
                             {
+                                ConfigureTextureForSmallScale(tex);
                                 newMat.mainTexture = tex;
+                                hasTexture = true;
                                 break;
                             }
                         }
+                    }
+
+                    if (!hasTexture)
+                    {
+                        foreach (string prop in oldMat.GetTexturePropertyNames())
+                        {
+                            Texture tex = oldMat.GetTexture(prop);
+                            if (tex == null)
+                            {
+                                continue;
+                            }
+
+                            ConfigureTextureForSmallScale(tex);
+                            newMat.mainTexture = tex;
+                            hasTexture = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasTexture && IsTrackSurfaceMaterial(oldMat.name))
+                    {
+                        newMat.color = new Color(0.08f, 0.12f, 0.15f, 1f);
                     }
 
                     mats[i] = newMat;
@@ -271,6 +369,56 @@ namespace SlotCarRacingAR.Runtime.Features
             }
 
             UnityEngine.Debug.Log($"[TrackModelLoader] Replaced {fixedCount} materials → Standard shader.");
+        }
+
+        private static bool IsTrackSurfaceMaterial(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName))
+            {
+                return false;
+            }
+
+            string lowerName = materialName.ToLowerInvariant();
+            return lowerName.Contains("circuit")
+                || lowerName.Contains("track")
+                || lowerName.Contains("road")
+                || lowerName.Contains("asphalt")
+                || lowerName.Contains("pista");
+        }
+
+        private static void ConfigureTexturedMaterialForTrack(Material material)
+        {
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", Color.white);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", Color.white);
+            }
+
+            if (material.HasProperty("_Metallic"))
+            {
+                material.SetFloat("_Metallic", 0f);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", 0f);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", 0f);
+            }
+        }
+
+        private static void ConfigureTextureForSmallScale(Texture texture)
+        {
+            texture.filterMode = FilterMode.Bilinear;
+            texture.anisoLevel = Mathf.Max(texture.anisoLevel, 8);
+            texture.mipMapBias = Mathf.Min(texture.mipMapBias, -2f);
         }
     }
 }

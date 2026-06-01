@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: f5b6219344697db4cb91e6207cce15d5
+guid: 5ba7ae69d63152c4c9c4fe74250ce23f
 ScriptedImporter:
   internalIDToNameTable: []
   externalObjects: {}
@@ -13,11 +13,11 @@ ScriptedImporter:
   importSettings:
     nodeNameMethod: 1
     animationMethod: 2
-    generateMipMaps: 0
+    generateMipMaps: 1
     texturesReadable: 0
     defaultMinFilterMode: 9729
     defaultMagFilterMode: 9729
-    anisotropicFilterLevel: 8
+    anisotropicFilterLevel: 1
   instantiationSettings:
     mask: -1
     layer: 0
@@ -25,4 +25,12 @@ ScriptedImporter:
     lightIntensityFactor: 1
     sceneObjectCreation: 2
   assetDependencies: []
-  reportItems: []
+  reportItems:
+  - type: 2
+    code: 20
+    messages:
+    - KHR_materials_emissive_strength
+  - type: 2
+    code: 20
+    messages:
+    - KHR_materials_specular

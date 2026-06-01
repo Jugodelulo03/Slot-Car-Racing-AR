@@ -65,6 +65,9 @@ namespace SlotCarRacingAR.Runtime.Features
         private float _laneOffsetMeters;
         private Color _visualColor = Color.white;
         private bool _hasVisualColor;
+        private GameObject _playerMarker;
+        private Color _playerMarkerColor = Color.white;
+        private bool _playerMarkerVisible;
 
         // Penalty states
         private enum CarState { Normal, SpinOut }
@@ -77,6 +80,7 @@ namespace SlotCarRacingAR.Runtime.Features
         private const float CubeSize = 1.5f;
         private const int PaletteTextureSize = 8;
         private const string BodyPaletteMeshName = "Car.001_palette_0";
+        private const string PlayerMarkerName = "PlayerCarMarker";
         private static readonly Vector2Int[] BodyPaletteSourceCells =
         {
             new(3, 4),
@@ -165,6 +169,27 @@ namespace SlotCarRacingAR.Runtime.Features
             _visualColor = color;
             _hasVisualColor = true;
             ApplyVisualColor();
+        }
+
+        public void SetPlayerMarker(Color color, bool visible)
+        {
+            _playerMarkerColor = color;
+            _playerMarkerVisible = visible;
+
+            if (!visible)
+            {
+                if (_playerMarker != null)
+                {
+                    _playerMarker.SetActive(false);
+                }
+
+                return;
+            }
+
+            EnsurePlayerMarker();
+            UpdatePlayerMarkerTransform();
+            ApplyPlayerMarkerColor();
+            _playerMarker.SetActive(true);
         }
 
         public bool LoadVisualFromResource(string resourcePath, Transform transformTemplate = null)
@@ -475,11 +500,16 @@ namespace SlotCarRacingAR.Runtime.Features
                 for (int i = transform.childCount - 1; i >= 0; i--)
                 {
                     Transform child = transform.GetChild(i);
-                    if (child != _sceneCarModel)
+                    if (child != _sceneCarModel && child.gameObject != _playerMarker)
                         Destroy(child.gameObject);
                 }
                 _sceneCarModel.gameObject.SetActive(true);
                 ApplyVisualColor();
+                if (_playerMarkerVisible)
+                {
+                    SetPlayerMarker(_playerMarkerColor, true);
+                }
+
                 UnityEngine.Debug.Log("[Car] Using scene-placed car model.");
                 return;
             }
@@ -489,6 +519,10 @@ namespace SlotCarRacingAR.Runtime.Features
 
             CreateCubeFallback();
             ApplyVisualColor();
+            if (_playerMarkerVisible)
+            {
+                SetPlayerMarker(_playerMarkerColor, true);
+            }
         }
 
         private void ClearVisualChildren()
@@ -616,6 +650,166 @@ namespace SlotCarRacingAR.Runtime.Features
                     }
                 }
             }
+        }
+
+        private void EnsurePlayerMarker()
+        {
+            if (_playerMarker != null)
+            {
+                return;
+            }
+
+            _playerMarker = new GameObject(PlayerMarkerName);
+            _playerMarker.transform.SetParent(transform, false);
+            _playerMarker.transform.localRotation = Quaternion.identity;
+
+            MeshFilter meshFilter = _playerMarker.AddComponent<MeshFilter>();
+            meshFilter.sharedMesh = CreatePyramidMesh();
+
+            MeshRenderer renderer = _playerMarker.AddComponent<MeshRenderer>();
+            Shader shader = Shader.Find("Standard");
+            if (shader == null)
+            {
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+            }
+
+            if (shader == null)
+            {
+                shader = Shader.Find("Sprites/Default");
+            }
+
+            renderer.material = new Material(shader);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        private void UpdatePlayerMarkerTransform()
+        {
+            if (_playerMarker == null)
+            {
+                return;
+            }
+
+            Bounds bounds;
+            if (!TryGetVisualLocalBounds(out bounds))
+            {
+                bounds = new Bounds(Vector3.zero, Vector3.one);
+            }
+
+            float horizontalExtent = Mathf.Max(bounds.size.x, bounds.size.z);
+            if (horizontalExtent < 0.001f)
+            {
+                horizontalExtent = 1f;
+            }
+
+            float baseSize = Mathf.Clamp(horizontalExtent * 0.22f, 0.12f, 0.34f);
+            float height = Mathf.Clamp(horizontalExtent * 0.42f, 0.20f, 0.60f);
+            _playerMarker.transform.localPosition = new Vector3(
+                bounds.center.x,
+                bounds.max.y + height * 0.06f,
+                bounds.center.z);
+            _playerMarker.transform.localRotation = Quaternion.identity;
+            _playerMarker.transform.localScale = new Vector3(baseSize, height, baseSize);
+        }
+
+        private void ApplyPlayerMarkerColor()
+        {
+            if (_playerMarker == null)
+            {
+                return;
+            }
+
+            Renderer renderer = _playerMarker.GetComponent<Renderer>();
+            if (renderer == null || renderer.material == null)
+            {
+                return;
+            }
+
+            Color color = _playerMarkerColor;
+            color.a = 1f;
+            if (renderer.material.HasProperty("_BaseColor"))
+            {
+                renderer.material.SetColor("_BaseColor", color);
+            }
+            else if (renderer.material.HasProperty("_Color"))
+            {
+                renderer.material.SetColor("_Color", color);
+            }
+        }
+
+        private bool TryGetVisualLocalBounds(out Bounds bounds)
+        {
+            bounds = default;
+            bool initialized = false;
+            Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+            for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+            {
+                Renderer renderer = renderers[rendererIndex];
+                if (renderer == null || IsPlayerMarkerRenderer(renderer))
+                {
+                    continue;
+                }
+
+                Bounds worldBounds = renderer.bounds;
+                Vector3 center = worldBounds.center;
+                Vector3 extents = worldBounds.extents;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 worldPoint = center + new Vector3(
+                        (corner & 1) == 0 ? -extents.x : extents.x,
+                        (corner & 2) == 0 ? -extents.y : extents.y,
+                        (corner & 4) == 0 ? -extents.z : extents.z);
+                    Vector3 localPoint = transform.InverseTransformPoint(worldPoint);
+                    if (!initialized)
+                    {
+                        bounds = new Bounds(localPoint, Vector3.zero);
+                        initialized = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(localPoint);
+                    }
+                }
+            }
+
+            return initialized;
+        }
+
+        private bool IsPlayerMarkerRenderer(Renderer renderer)
+        {
+            return _playerMarker != null && renderer.transform.IsChildOf(_playerMarker.transform);
+        }
+
+        private static Mesh CreatePyramidMesh()
+        {
+            Mesh mesh = new Mesh();
+            mesh.name = "PlayerMarkerPyramid";
+            mesh.vertices = new[]
+            {
+                new Vector3(-0.5f, 1f, -0.5f),
+                new Vector3(0.5f, 1f, -0.5f),
+                new Vector3(0.5f, 1f, 0.5f),
+                new Vector3(-0.5f, 1f, 0.5f),
+                new Vector3(0f, 0f, 0f),
+            };
+            mesh.triangles = new[]
+            {
+                0, 4, 1,
+                1, 4, 2,
+                2, 4, 3,
+                3, 4, 0,
+                0, 1, 2,
+                0, 2, 3,
+                1, 4, 0,
+                2, 4, 1,
+                3, 4, 2,
+                0, 4, 3,
+                2, 1, 0,
+                3, 2, 0,
+            };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         private void LoadCarModel()

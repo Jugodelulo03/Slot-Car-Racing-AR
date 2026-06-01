@@ -28,6 +28,7 @@ namespace SlotCarRacingAR.Runtime.Debug
         private RectTransform _overlayPanel;
         private Text _overlayText;
         private string _runtimeBootstrapStatus = "not-started";
+        private bool _isBound;
         private float _fpsAccumulator;
         private int _fpsFrameCount;
         private float _currentFps;
@@ -58,6 +59,8 @@ namespace SlotCarRacingAR.Runtime.Debug
             _arCameraBackground = arCameraBackground;
             _arCamera = arCamera;
             _arSurfaceProbe = arSurfaceProbe;
+            _isBound = true;
+            EnsureOverlayVisuals();
             ResubscribeCameraFrames();
         }
 
@@ -70,11 +73,15 @@ namespace SlotCarRacingAR.Runtime.Debug
 
         private void Awake()
         {
-            EnsureOverlayVisuals();
         }
 
         private void OnEnable()
         {
+            if (!_isBound)
+            {
+                return;
+            }
+
             EnsureOverlayVisuals();
             ResubscribeCameraFrames();
 
@@ -108,6 +115,11 @@ namespace SlotCarRacingAR.Runtime.Debug
 
         private void Update()
         {
+            if (!_isBound)
+            {
+                return;
+            }
+
             EnsureOverlayVisuals();
             ResolveMissingReferences();
             UpdateFps();
