@@ -12,6 +12,8 @@ namespace SlotCarRacingAR.Runtime.UI
     {
         private Text _countdownText;
         private GameObject _panel;
+        private RetroUiAnimator _panelAnimator;
+        private RetroUiAnimator _textAnimator;
 
         public event Action OnCountdownComplete;
 
@@ -23,7 +25,14 @@ namespace SlotCarRacingAR.Runtime.UI
 
         public void Show(byte value)
         {
+            bool wasHidden = !_panel.activeSelf;
             _panel.SetActive(true);
+            if (wasHidden)
+            {
+                _panelAnimator?.PlayFadeIn(0.16f);
+                _panelAnimator?.PlaySlideIn(new Vector2(0f, -60f), 0.22f);
+            }
+
             GameAudio.PlayCountdown(value);
 
             if (value == 0)
@@ -32,12 +41,14 @@ namespace SlotCarRacingAR.Runtime.UI
                 _countdownText.color = RetroUi.Green;
                 _countdownText.fontSize = 150;
                 OnCountdownComplete?.Invoke();
+                _textAnimator?.PlayPop(1.16f, 0.24f);
                 return;
             }
 
             _countdownText.text = value.ToString();
             _countdownText.color = RetroUi.Yellow;
             _countdownText.fontSize = 230;
+            _textAnimator?.PlayPop(1.12f, 0.22f);
         }
 
         public void Hide()
@@ -60,6 +71,7 @@ namespace SlotCarRacingAR.Runtime.UI
             _panel.transform.SetParent(transform, false);
             RectTransform panelRect = _panel.AddComponent<RectTransform>();
             RetroUi.Fill(panelRect);
+            _panelAnimator = RetroUiAnimator.Attach(_panel);
 
             RetroUi.CreateFullScreenBackground(_panel.transform, "CountdownBackground", false);
 
@@ -95,6 +107,7 @@ namespace SlotCarRacingAR.Runtime.UI
             _countdownText.resizeTextForBestFit = true;
             _countdownText.resizeTextMinSize = 90;
             _countdownText.resizeTextMaxSize = 240;
+            _textAnimator = RetroUiAnimator.Attach(_countdownText.gameObject);
         }
     }
 }

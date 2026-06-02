@@ -12,7 +12,9 @@ namespace SlotCarRacingAR.Runtime.Features
     {
         [Header("Visualization")]
         [Tooltip("Show debug points at runtime.")]
-        [SerializeField] private bool _showPoints = true;
+        [SerializeField] private bool _showPoints = false;
+        [Tooltip("Allow these debug points in device builds. Keep disabled for normal gameplay.")]
+        [SerializeField] private bool _showInPlayerBuilds = false;
         [Tooltip("Size of each debug sphere.")]
         [SerializeField] private float _pointSize = 0.002f;
         [Tooltip("Only show every Nth point (1 = all points).")]
@@ -39,7 +41,7 @@ namespace SlotCarRacingAR.Runtime.Features
             _trackAnchor = anchor;
             ClearPoints();
 
-            if (!_showPoints || track == null) return;
+            if (!ShouldShowPoints() || track == null) return;
 
             Vector3[] waypoints = track.GetAllWaypoints();
             CurveDifficulty[] difficulties = track.GetAllDifficulties();
@@ -86,7 +88,7 @@ namespace SlotCarRacingAR.Runtime.Features
         {
             _showPoints = visible;
             if (_pointsParent != null)
-                _pointsParent.SetActive(visible);
+                _pointsParent.SetActive(ShouldShowPoints());
         }
 
         /// <summary>Destroy all debug point objects.</summary>
@@ -102,6 +104,18 @@ namespace SlotCarRacingAR.Runtime.Features
         private void OnDestroy()
         {
             ClearPoints();
+        }
+
+        private bool ShouldShowPoints()
+        {
+#if !UNITY_EDITOR
+            if (!_showInPlayerBuilds)
+            {
+                return false;
+            }
+#endif
+
+            return _showPoints;
         }
 
         private static Color GetDifficultyColor(CurveDifficulty difficulty)

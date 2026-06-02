@@ -23,6 +23,7 @@ namespace SlotCarRacingAR.Runtime.App
         private LobbySessionUI _sessionUI;
         private LobbyJoinUI _joinUI;
         private SharedLobbyUI _sharedLobbyUI;
+        private ConnectionToast _connectionToast;
         private SharedLobbyState _sharedLobbyState;
         private LanDiscovery _lanDiscovery;
         private GameObject _lobbyStatePrefab;
@@ -31,11 +32,13 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void Awake()
         {
+            EvaluationLog.EnsureInitialized();
             GameAudio.PlayMusic(GameMusic.Menu);
             EnsureInputSystemUiModule();
             CreateSessionManager();
             CreateLanDiscovery();
             CreateStartScreen();
+            EnsureConnectionToast();
         }
 
         private void OnDestroy()
@@ -153,6 +156,14 @@ namespace SlotCarRacingAR.Runtime.App
 
             PrepareSharedLobbyStatePrefab();
             _sessionManager?.SetSharedLobbyStatePrefab(_lobbyStatePrefab);
+        }
+
+        private void EnsureConnectionToast()
+        {
+            if (_connectionToast == null)
+            {
+                _connectionToast = gameObject.AddComponent<ConnectionToast>();
+            }
         }
 
         private void PrepareSharedLobbyStatePrefab()
@@ -348,6 +359,9 @@ namespace SlotCarRacingAR.Runtime.App
         public void OnCreateMatchSelected()
         {
             UnityEngine.Debug.Log("[Lobby] Create Match selected — starting host session.");
+            EvaluationLog.MarkFlowStep(1, "Crear partida");
+            EvaluationLog.BeginSetup("host_create_match");
+            EvaluationLog.BeginJoinTiming("host_waiting_for_players");
             ShowSessionUI();
             _sessionManager.SetSharedLobbyStatePrefab(_lobbyStatePrefab);
             _sessionManager.StartHostSession();
@@ -366,12 +380,16 @@ namespace SlotCarRacingAR.Runtime.App
         private void OnGuestConnect(string hostIp, int port)
         {
             UnityEngine.Debug.Log("[Lobby] Guest connecting to " + hostIp + ":" + port);
+            EvaluationLog.MarkFlowStep(1, "Unirse a partida");
+            EvaluationLog.BeginSetup("guest_join_match");
+            EvaluationLog.BeginJoinTiming("guest_connect_to_" + hostIp + ":" + port);
             _sessionManager.SetSharedLobbyStatePrefab(_lobbyStatePrefab);
             _sessionManager.StartGuestSession(hostIp, port);
         }
 
         private void OnRetryGuestSession()
         {
+            EvaluationLog.BeginJoinTiming("guest_retry_connect");
             _sessionManager.RetryGuestSession();
         }
 
@@ -398,8 +416,13 @@ namespace SlotCarRacingAR.Runtime.App
 
             if (state == SessionState.Connected)
             {
+                EvaluationLog.CompleteJoinTiming("role=" + _sessionManager.Role + " connected");
                 // Show shared lobby instead of auto-transitioning to race
                 Invoke(nameof(EnterSharedLobby), 1.0f);
+            }
+            else if (state == SessionState.Failed && _sessionManager.Role == PlayerRole.Guest)
+            {
+                _connectionToast?.Show("Host desconectado", RetroUi.Red);
             }
         }
 
@@ -561,9 +584,13 @@ namespace SlotCarRacingAR.Runtime.App
             {
                 _sharedLobbyUI.ShowConnectionConfirmation();
             }
-            else if (oldCount >= 2 && newCount < 2)
+            else if (newCount < oldCount)
             {
-                _sharedLobbyUI.ShowDisconnected();
+                _connectionToast?.ShowPlayerDisconnected(oldCount, newCount);
+                if (newCount < 2)
+                {
+                    _sharedLobbyUI.ShowDisconnected();
+                }
             }
         }
 
@@ -599,6 +626,7 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void OnRetrySession()
         {
+            EvaluationLog.BeginJoinTiming("host_retry_waiting_for_players");
             _sessionManager.RetryHostSession();
         }
 

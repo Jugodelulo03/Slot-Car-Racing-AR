@@ -20,6 +20,8 @@ namespace SlotCarRacingAR.Runtime.UI
         private GameObject _readyPanel;
         private Button _readyButton;
         private Text _readyButtonText;
+        private GameObject _rescanPanel;
+        private Button _rescanButton;
         private GameObject _readySyncStrip;
         private readonly Image[] _readyPanelImages = new Image[SharedLobbyState.MaxPlayers + 1];
         private readonly Image[] _readyLights = new Image[SharedLobbyState.MaxPlayers + 1];
@@ -39,6 +41,7 @@ namespace SlotCarRacingAR.Runtime.UI
         private bool _localReady;
 
         public event Action<bool> OnReadyPressed;
+        public event Action OnRescanPressed;
 
         private void Awake()
         {
@@ -57,6 +60,19 @@ namespace SlotCarRacingAR.Runtime.UI
             }
         }
 
+        private void OnDestroy()
+        {
+            if (_readyButton != null)
+            {
+                _readyButton.onClick.RemoveListener(HandleReadyButtonClicked);
+            }
+
+            if (_rescanButton != null)
+            {
+                _rescanButton.onClick.RemoveListener(HandleRescanButtonClicked);
+            }
+        }
+
         public void ShowScanning()
         {
             gameObject.SetActive(true);
@@ -64,6 +80,9 @@ namespace SlotCarRacingAR.Runtime.UI
             _stabilityPanel.SetActive(false);
             _toastPanel.SetActive(false);
             _readyPanel.SetActive(false);
+            SetRescanVisible(false);
+            _localReady = false;
+            ApplyReadyButtonVisual(false);
             SetGuide(
                 "PASO 1/3",
                 "APUNTA AL MARCADOR",
@@ -75,6 +94,7 @@ namespace SlotCarRacingAR.Runtime.UI
         {
             _scanningPanel.SetActive(false);
             _stabilityPanel.SetActive(true);
+            SetRescanVisible(true);
             GameAudio.Play(GameSfx.MarkerFound);
             ShowToast("Marcador detectado", RetroUi.Green);
             SetGuide(
@@ -94,6 +114,7 @@ namespace SlotCarRacingAR.Runtime.UI
                     _stabilityText.text = "PISTA ESTABILIZANDOSE";
                     _stabilityText.color = RetroUi.Yellow;
                     _readyPanel.SetActive(false);
+                    SetRescanVisible(true);
                     SetGuide(
                         "PASO 2/3",
                         "MANTEN EL CELULAR QUIETO",
@@ -106,6 +127,7 @@ namespace SlotCarRacingAR.Runtime.UI
                     GameAudio.Play(GameSfx.Ready);
                     ShowToast("Pista lista", RetroUi.Green);
                     _readyPanel.SetActive(true);
+                    SetRescanVisible(true);
                     SetGuide(
                         "PASO 3/3",
                         "AJUSTA Y CONFIRMA",
@@ -116,6 +138,7 @@ namespace SlotCarRacingAR.Runtime.UI
                     _stabilityPanel.SetActive(false);
                     _scanningPanel.SetActive(true);
                     _readyPanel.SetActive(false);
+                    SetRescanVisible(false);
                     SetGuide(
                         "PASO 1/3",
                         "APUNTA AL MARCADOR",
@@ -132,6 +155,7 @@ namespace SlotCarRacingAR.Runtime.UI
             _stabilityText.color = RetroUi.Red;
             _readyPanel.SetActive(false);
             _readySyncStrip.SetActive(false);
+            SetRescanVisible(true);
             GameAudio.Play(GameSfx.Error);
             SetGuide(
                 "RECUPERA TRACKING",
@@ -151,6 +175,7 @@ namespace SlotCarRacingAR.Runtime.UI
 
             if (hostReady && guestReady)
             {
+                SetRescanVisible(false);
                 SetGuide(
                     "LISTOS",
                     "ARRANCA LA CARRERA",
@@ -159,6 +184,7 @@ namespace SlotCarRacingAR.Runtime.UI
             }
             else if (_localReady)
             {
+                SetRescanVisible(true);
                 SetGuide(
                     "ESPERANDO",
                     "FALTAN JUGADORES",
@@ -183,6 +209,7 @@ namespace SlotCarRacingAR.Runtime.UI
 
             if (sharedState.AllReady)
             {
+                SetRescanVisible(false);
                 SetGuide(
                     "LISTOS",
                     "ARRANCA LA CARRERA",
@@ -191,6 +218,7 @@ namespace SlotCarRacingAR.Runtime.UI
             }
             else if (_localReady)
             {
+                SetRescanVisible(true);
                 SetGuide(
                     "ESPERANDO",
                     "FALTAN JUGADORES",
@@ -202,9 +230,9 @@ namespace SlotCarRacingAR.Runtime.UI
         public void RevokeReady()
         {
             _localReady = false;
-            _readyButtonText.text = "CONFIRMAR";
-            _readyButtonText.color = RetroUi.White;
+            ApplyReadyButtonVisual(false);
             _readySyncStrip.SetActive(false);
+            SetRescanVisible(true);
             SetGuide(
                 "PASO 3/3",
                 "CONFIRMA DE NUEVO",
@@ -398,6 +426,41 @@ namespace SlotCarRacingAR.Runtime.UI
                 FontStyle.BoldAndItalic);
             _readyPanel.SetActive(false);
 
+            _rescanPanel = RetroUi.CreatePanel(
+                transform,
+                "RescanPanel",
+                new Vector2(0.03f, 0.04f),
+                new Vector2(0.23f, 0.13f),
+                RetroUi.Yellow,
+                true).gameObject;
+
+            _rescanButton = _rescanPanel.AddComponent<Button>();
+            _rescanButton.targetGraphic = _rescanPanel.GetComponent<Image>();
+            ColorBlock rescanColors = _rescanButton.colors;
+            rescanColors.normalColor = RetroUi.Yellow;
+            rescanColors.highlightedColor = Color.Lerp(RetroUi.Yellow, RetroUi.White, 0.12f);
+            rescanColors.pressedColor = Color.Lerp(RetroUi.Yellow, RetroUi.Black, 0.18f);
+            rescanColors.selectedColor = RetroUi.Yellow;
+            _rescanButton.colors = rescanColors;
+            _rescanButton.onClick.AddListener(HandleRescanButtonClicked);
+            _rescanPanel.AddComponent<RetroButtonPress>();
+
+            Text rescanText = RetroUi.CreateText(
+                _rescanPanel.transform,
+                "RescanButtonText",
+                "REESCANEAR",
+                Vector2.zero,
+                Vector2.one,
+                22,
+                RetroUi.TealDark,
+                TextAnchor.MiddleCenter,
+                FontStyle.BoldAndItalic,
+                false);
+            rescanText.resizeTextForBestFit = true;
+            rescanText.resizeTextMinSize = 14;
+            rescanText.resizeTextMaxSize = 22;
+            _rescanPanel.SetActive(false);
+
             _readySyncStrip = new GameObject("ReadySyncStrip");
             _readySyncStrip.transform.SetParent(transform, false);
             RectTransform readySyncRect = _readySyncStrip.AddComponent<RectTransform>();
@@ -493,14 +556,7 @@ namespace SlotCarRacingAR.Runtime.UI
         private void HandleReadyButtonClicked()
         {
             _localReady = !_localReady;
-            _readyButtonText.text = "CONFIRMAR";
-            _readyButtonText.color = _localReady ? RetroUi.Yellow : RetroUi.White;
-
-            Image buttonImage = _readyButton.GetComponent<Image>();
-            if (buttonImage != null)
-            {
-                buttonImage.color = _localReady ? RetroUi.TealDark : RetroUi.Red;
-            }
+            ApplyReadyButtonVisual(_localReady);
 
             if (_localReady)
             {
@@ -520,15 +576,49 @@ namespace SlotCarRacingAR.Runtime.UI
                     RetroUi.Yellow);
             }
 
-            ColorBlock readyColors = _readyButton.colors;
-            Color fillColor = _localReady ? RetroUi.TealDark : RetroUi.Red;
-            readyColors.normalColor = fillColor;
-            readyColors.highlightedColor = Color.Lerp(fillColor, RetroUi.White, 0.12f);
-            readyColors.pressedColor = Color.Lerp(fillColor, RetroUi.Black, 0.18f);
-            readyColors.selectedColor = fillColor;
-            _readyButton.colors = readyColors;
-
             OnReadyPressed?.Invoke(_localReady);
+        }
+
+        private void HandleRescanButtonClicked()
+        {
+            _localReady = false;
+            ApplyReadyButtonVisual(false);
+            SetRescanVisible(false);
+            OnRescanPressed?.Invoke();
+        }
+
+        private void SetRescanVisible(bool visible)
+        {
+            if (_rescanPanel != null)
+            {
+                _rescanPanel.SetActive(visible);
+            }
+        }
+
+        private void ApplyReadyButtonVisual(bool ready)
+        {
+            if (_readyButtonText != null)
+            {
+                _readyButtonText.text = "CONFIRMAR";
+                _readyButtonText.color = ready ? RetroUi.Yellow : RetroUi.White;
+            }
+
+            Color fillColor = ready ? RetroUi.TealDark : RetroUi.Red;
+            if (_readyButton != null)
+            {
+                Image buttonImage = _readyButton.GetComponent<Image>();
+                if (buttonImage != null)
+                {
+                    buttonImage.color = fillColor;
+                }
+
+                ColorBlock readyColors = _readyButton.colors;
+                readyColors.normalColor = fillColor;
+                readyColors.highlightedColor = Color.Lerp(fillColor, RetroUi.White, 0.12f);
+                readyColors.pressedColor = Color.Lerp(fillColor, RetroUi.Black, 0.18f);
+                readyColors.selectedColor = fillColor;
+                _readyButton.colors = readyColors;
+            }
         }
     }
 }

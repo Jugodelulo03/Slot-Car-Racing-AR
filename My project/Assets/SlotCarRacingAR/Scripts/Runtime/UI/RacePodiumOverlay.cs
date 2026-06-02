@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using SlotCarRacingAR.Runtime.Infrastructure;
 using UnityEngine;
 using UnityEngine.UI;
@@ -30,6 +31,8 @@ namespace SlotCarRacingAR.Runtime.UI
         private Button _secondaryButton;
         private Text _primaryButtonText;
         private Text _secondaryButtonText;
+        private RetroUiAnimator _panelAnimator;
+        private Coroutine _rowRevealRoutine;
         private PrimaryAction _primaryAction;
         private SecondaryAction _secondaryAction;
 
@@ -55,6 +58,7 @@ namespace SlotCarRacingAR.Runtime.UI
 
             _root.SetActive(true);
             Refresh(sharedState);
+            PlayShowAnimation();
         }
 
         public void Refresh(SharedLobbyState sharedState)
@@ -72,6 +76,12 @@ namespace SlotCarRacingAR.Runtime.UI
         {
             if (_root != null)
             {
+                if (_rowRevealRoutine != null)
+                {
+                    StopCoroutine(_rowRevealRoutine);
+                    _rowRevealRoutine = null;
+                }
+
                 _root.SetActive(false);
             }
         }
@@ -217,6 +227,7 @@ namespace SlotCarRacingAR.Runtime.UI
                 new Vector2(0.76f, 0.90f),
                 RetroUi.Cream,
                 true);
+            _panelAnimator = RetroUiAnimator.Attach(panel.gameObject);
 
             _titleText = RetroUi.CreateText(
                 panel,
@@ -293,6 +304,33 @@ namespace SlotCarRacingAR.Runtime.UI
                 25);
             _secondaryButtonText = _secondaryButton.GetComponentInChildren<Text>();
             _secondaryButton.onClick.AddListener(HandleSecondaryClicked);
+        }
+
+        private void PlayShowAnimation()
+        {
+            _panelAnimator?.PlayPop(1.04f, 0.24f);
+            _panelAnimator?.PlayFadeIn(0.18f);
+
+            if (_rowRevealRoutine != null)
+            {
+                StopCoroutine(_rowRevealRoutine);
+            }
+
+            _rowRevealRoutine = StartCoroutine(RevealRowsRoutine());
+        }
+
+        private IEnumerator RevealRowsRoutine()
+        {
+            for (int rowIndex = 0; rowIndex < _resultRowBackgrounds.Length; rowIndex++)
+            {
+                Image row = _resultRowBackgrounds[rowIndex];
+                if (row != null && row.gameObject.activeSelf)
+                {
+                    RetroUiAnimator.Attach(row.gameObject)?.PlaySlideIn(new Vector2(-36f, 0f), 0.18f);
+                    RetroUiAnimator.Attach(row.gameObject)?.PlayFadeIn(0.12f);
+                    yield return new WaitForSecondsRealtime(0.055f);
+                }
+            }
         }
 
         private void HandlePrimaryClicked()

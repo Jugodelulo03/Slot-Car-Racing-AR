@@ -10,11 +10,13 @@ namespace SlotCarRacingAR.Runtime.UI
 
         private RectTransform _rectTransform;
         private Vector2 _restPosition;
+        private RetroUiAnimator _animator;
         private bool _pressed;
 
         private void Awake()
         {
             _rectTransform = GetComponent<RectTransform>();
+            _animator = RetroUiAnimator.Attach(gameObject);
             if (_rectTransform != null)
             {
                 _restPosition = _rectTransform.anchoredPosition;
@@ -39,7 +41,12 @@ namespace SlotCarRacingAR.Runtime.UI
 
         private void OnDisable()
         {
-            SetPressed(false);
+            _pressed = false;
+            if (_rectTransform != null)
+            {
+                _rectTransform.anchoredPosition = _restPosition;
+                _rectTransform.localScale = Vector3.one;
+            }
         }
 
         private void SetPressed(bool pressed)
@@ -51,6 +58,11 @@ namespace SlotCarRacingAR.Runtime.UI
 
             _pressed = pressed;
             _rectTransform.anchoredPosition = _restPosition + (pressed ? PressOffset : Vector2.zero);
+            _rectTransform.localScale = pressed ? Vector3.one * 0.965f : Vector3.one;
+            if (!pressed)
+            {
+                _animator?.PlayPressBounce();
+            }
         }
     }
 }

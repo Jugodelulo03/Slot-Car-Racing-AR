@@ -45,6 +45,7 @@ namespace SlotCarRacingAR.Runtime.App
         private CountdownOverlay _countdownOverlay;
         private RaceHud _raceHud;
         private RacePodiumOverlay _podiumOverlay;
+        private ConnectionToast _connectionToast;
         private readonly CarPlaceholder[] _carPresenters = new CarPlaceholder[SharedLobbyState.MaxPlayers + 1];
         [SerializeField] private bool _enableArDebugOverlay;
         private bool _arRuntimeBootstrapStarted;
@@ -52,6 +53,7 @@ namespace SlotCarRacingAR.Runtime.App
         private bool _raceActive;
         private bool _racePresentersConfigured;
         private bool _localPenaltyWasActive;
+        private bool _networkDisconnectSubscribed;
         private float _raceElapsedSeconds;
         private byte _lastObservedRematchLobbySignal;
         private readonly RaceCarRuntimeState[] _raceStates =
@@ -89,10 +91,10 @@ namespace SlotCarRacingAR.Runtime.App
         private static readonly float[] PlayerLaneOffsets =
         {
             0f,
-            -0.006f,
-            0.006f,
-            -0.014f,
-            0.014f
+            -0.004f,
+            0.004f,
+            -0.009f,
+            0.009f
         };
 
         private byte GetLocalPlayerId()
@@ -280,6 +282,7 @@ namespace SlotCarRacingAR.Runtime.App
             _arDebugOverlay = GetComponentInChildren<ArDebugOverlay>(true);
             _raceHud = GetComponentInChildren<RaceHud>(true);
             _podiumOverlay = GetComponentInChildren<RacePodiumOverlay>(true);
+            _connectionToast = GetComponentInChildren<ConnectionToast>(true);
         }
 
         private void WireSceneDependencies()
@@ -296,6 +299,52 @@ namespace SlotCarRacingAR.Runtime.App
             _markerDetectionEntryPoint?.BindAnchorManager(_arAnchorManager);
             EnsureTrackSizePanel();
             EnsureArDebugOverlay();
+            EnsureConnectionToast();
+            SubscribeNetworkDisconnectCallbacks();
+        }
+
+        private void EnsureConnectionToast()
+        {
+            if (_connectionToast == null)
+            {
+                _connectionToast = gameObject.AddComponent<ConnectionToast>();
+            }
+        }
+
+        private void SubscribeNetworkDisconnectCallbacks()
+        {
+            NetworkManager networkManager = NetworkManager.Singleton;
+            if (networkManager == null || _networkDisconnectSubscribed)
+            {
+                return;
+            }
+
+            networkManager.OnClientDisconnectCallback += HandleNetworkClientDisconnected;
+            _networkDisconnectSubscribed = true;
+        }
+
+        private void UnsubscribeNetworkDisconnectCallbacks()
+        {
+            NetworkManager networkManager = NetworkManager.Singleton;
+            if (networkManager == null || !_networkDisconnectSubscribed)
+            {
+                return;
+            }
+
+            networkManager.OnClientDisconnectCallback -= HandleNetworkClientDisconnected;
+            _networkDisconnectSubscribed = false;
+        }
+
+        private void HandleNetworkClientDisconnected(ulong clientId)
+        {
+            NetworkManager networkManager = NetworkManager.Singleton;
+            if (networkManager != null && !networkManager.IsServer && clientId == NetworkManager.ServerClientId)
+            {
+                _connectionToast?.Show("Host desconectado", RetroUi.Red);
+                return;
+            }
+
+            _connectionToast?.Show("Jugador desconectado", RetroUi.Red);
         }
 
         private void EnsureSurfaceProbe()
@@ -794,6 +843,7 @@ namespace SlotCarRacingAR.Runtime.App
             _arSetupUI = uiObj.AddComponent<ArSetupUI>();
             _arSetupUI.ShowScanning();
             _arSetupUI.OnReadyPressed += HandleLocalReadyPressed;
+            _arSetupUI.OnRescanPressed += HandleRescanTrackingPressed;
 
             // Create stability evaluator
             GameObject stabObj = new GameObject("TrackStabilityEvaluator");
@@ -828,6 +878,8 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void HandleTrackAnchored()
         {
+            EvaluationLog.MarkFlowStep(2, "Detectar pista");
+
             if (_arSetupUI != null)
             {
                 _arSetupUI.ShowMarkerDetected();
@@ -937,6 +989,7 @@ namespace SlotCarRacingAR.Runtime.App
                 _sharedState.OnCountdownTick -= HandleCountdownTick;
                 _sharedState.OnPhaseChanged -= HandlePhaseChanged;
                 _sharedState.OnRaceStateChanged -= HandleRaceStateChanged;
+                _sharedState.OnPlayerCountChanged -= HandleRacePlayerCountChanged;
             }
 
             _sharedState = sharedState;
@@ -945,8 +998,17 @@ namespace SlotCarRacingAR.Runtime.App
             _sharedState.OnCountdownTick += HandleCountdownTick;
             _sharedState.OnPhaseChanged += HandlePhaseChanged;
             _sharedState.OnRaceStateChanged += HandleRaceStateChanged;
+            _sharedState.OnPlayerCountChanged += HandleRacePlayerCountChanged;
             _raceHud?.Bind(_sharedState);
             _podiumOverlay?.Refresh(_sharedState);
+        }
+
+        private void HandleRacePlayerCountChanged(byte oldCount, byte newCount)
+        {
+            if (newCount < oldCount)
+            {
+                _connectionToast?.ShowPlayerDisconnected(oldCount, newCount);
+            }
         }
 
         private void HandleLocalReadyPressed(bool ready)
@@ -954,12 +1016,51 @@ namespace SlotCarRacingAR.Runtime.App
             if (_sharedState != null)
             {
                 _sharedState.SetLocalReady(ready);
+                if (ready)
+                {
+                    EvaluationLog.MarkFlowStep(3, "Confirmacion de tracking");
+                }
+
                 UnityEngine.Debug.Log($"[Race] Local ready set to {ready}");
             }
             else
             {
                 UnityEngine.Debug.LogWarning("[Race] Ready pressed but SharedLobbyState not found!");
             }
+        }
+
+        private void HandleRescanTrackingPressed()
+        {
+            if (_sharedState != null && _sharedState.Phase.Value != RacePhase.Setup)
+            {
+                _connectionToast?.Show("La carrera ya va a empezar", RetroUi.Yellow);
+                return;
+            }
+
+            UnityEngine.Debug.Log("[Race] Rescan tracking requested.");
+
+            if (_sharedState != null)
+            {
+                _sharedState.SetLocalReady(false);
+            }
+
+            _arSetupUI?.RevokeReady();
+            _stabilityEvaluator?.StopEvaluation();
+            _trackSizePanel?.SetAdjustmentsAvailable(true);
+
+            if (_markerDetectionEntryPoint != null)
+            {
+                _markerDetectionEntryPoint.OnTrackAnchored -= HandleTrackAnchored;
+                _markerDetectionEntryPoint.OnTrackAnchored += HandleTrackAnchored;
+                _markerDetectionEntryPoint.ResetAnchor();
+            }
+            else
+            {
+                UnityEngine.Debug.LogWarning("[Race] Rescan requested but MarkerDetectionEntryPoint is missing.");
+            }
+
+            _arSession?.Reset();
+            _arSetupUI?.ShowScanning();
         }
 
         private void HandleReadyStateChanged(bool hostReady, bool guestReady)
@@ -1054,6 +1155,14 @@ namespace SlotCarRacingAR.Runtime.App
 
         private void StartRace()
         {
+            int activePlayers = _sharedState != null ? _sharedState.PlayerCount.Value : 0;
+            EvaluationLog.MarkFlowStep(4, "Iniciar carrera");
+            EvaluationLog.CompleteSetupAtRaceStart(activePlayers);
+            if (_sharedState != null && _sharedState.IsServer)
+            {
+                EvaluationLog.RecordRaceStarted(activePlayers);
+            }
+
             // Hide countdown overlay
             if (_countdownOverlay != null)
             {
@@ -1106,6 +1215,28 @@ namespace SlotCarRacingAR.Runtime.App
             _podiumOverlay?.Show(_sharedState);
             GameAudio.PlayMusic(GameMusic.Menu);
             GameAudio.Play(GameSfx.Finish);
+            EvaluationLog.MarkFlowStep(5, "Terminar carrera");
+            if (_sharedState != null && _sharedState.IsServer)
+            {
+                int activePlayers = 0;
+                float[] finishTimes = new float[SharedLobbyState.MaxPlayers];
+                for (byte playerId = 1; playerId <= SharedLobbyState.MaxPlayers; playerId++)
+                {
+                    if (_sharedState.HasPlayer(playerId))
+                    {
+                        activePlayers++;
+                    }
+
+                    finishTimes[playerId - 1] = _sharedState.GetFinishTime(playerId);
+                }
+
+                EvaluationLog.RecordRaceFinishedByAll(
+                    activePlayers,
+                    _sharedState.GetFinishedCount(),
+                    _sharedState.WinnerPlayerId.Value,
+                    finishTimes);
+            }
+
             UnityEngine.Debug.Log("[Race] Race finished. Winner player=" + (_sharedState != null ? _sharedState.WinnerPlayerId.Value : 0));
         }
 
@@ -1436,7 +1567,10 @@ namespace SlotCarRacingAR.Runtime.App
                 _sharedState.OnCountdownTick -= HandleCountdownTick;
                 _sharedState.OnPhaseChanged -= HandlePhaseChanged;
                 _sharedState.OnRaceStateChanged -= HandleRaceStateChanged;
+                _sharedState.OnPlayerCountChanged -= HandleRacePlayerCountChanged;
             }
+
+            UnsubscribeNetworkDisconnectCallbacks();
 
             if (_podiumOverlay != null)
             {
@@ -1450,6 +1584,12 @@ namespace SlotCarRacingAR.Runtime.App
             {
                 _markerDetectionEntryPoint.OnTrackAnchored -= HandleTrackAnchored;
                 _markerDetectionEntryPoint.OnTrackLost -= HandleTrackingLost;
+            }
+
+            if (_arSetupUI != null)
+            {
+                _arSetupUI.OnReadyPressed -= HandleLocalReadyPressed;
+                _arSetupUI.OnRescanPressed -= HandleRescanTrackingPressed;
             }
         }
 

@@ -18,8 +18,11 @@ namespace SlotCarRacingAR.Runtime.UI
         private Image _positionBackground;
         private GameObject _finishNoticePanel;
         private Text _finishNoticeText;
+        private RetroUiAnimator _positionAnimator;
+        private RetroUiAnimator _finishNoticeAnimator;
         private bool _visible;
         private float _lastObservedLocalFinishTime = -1f;
+        private int _lastDisplayedPosition = -1;
 
         private void Start()
         {
@@ -47,6 +50,7 @@ namespace SlotCarRacingAR.Runtime.UI
             if (!visible)
             {
                 _lastObservedLocalFinishTime = -1f;
+                _lastDisplayedPosition = -1;
                 if (_finishNoticePanel != null)
                 {
                     _finishNoticePanel.SetActive(false);
@@ -113,6 +117,7 @@ namespace SlotCarRacingAR.Runtime.UI
             _finishNoticePanel.SetActive(true);
             if (playSfx)
             {
+                _finishNoticeAnimator?.PlayPop(1.08f, 0.24f);
                 GameAudio.Play(GameSfx.Ready);
             }
         }
@@ -121,6 +126,11 @@ namespace SlotCarRacingAR.Runtime.UI
         {
             int clamped = Mathf.Clamp(position, 1, 4);
             _positionText.text = FormatOrdinal(clamped);
+            if (_lastDisplayedPosition != clamped)
+            {
+                _positionAnimator?.PlayPop(1.08f, 0.18f);
+                _lastDisplayedPosition = clamped;
+            }
 
             if (_positionBackground != null)
             {
@@ -239,6 +249,7 @@ namespace SlotCarRacingAR.Runtime.UI
             _positionText.resizeTextForBestFit = true;
             _positionText.resizeTextMinSize = 54;
             _positionText.resizeTextMaxSize = 100;
+            _positionAnimator = RetroUiAnimator.Attach(positionPanel.gameObject);
 
             _finishNoticePanel = RetroUi.CreatePanel(
                 _root.transform,
@@ -261,6 +272,7 @@ namespace SlotCarRacingAR.Runtime.UI
             _finishNoticeText.resizeTextForBestFit = true;
             _finishNoticeText.resizeTextMinSize = 42;
             _finishNoticeText.resizeTextMaxSize = 70;
+            _finishNoticeAnimator = RetroUiAnimator.Attach(_finishNoticePanel);
             _finishNoticePanel.SetActive(false);
         }
 
